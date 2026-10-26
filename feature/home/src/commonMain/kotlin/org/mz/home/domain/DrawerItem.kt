@@ -12,7 +12,7 @@ enum class DrawerItem(
         icon = Resources.Icon.Profile
     ),
     Categories(
-        title = "Categories",
+        title = "Explore",
         icon = Resources.Icon.Categories
     ),
     CartFilled(
@@ -21,11 +21,11 @@ enum class DrawerItem(
     ),
     Orders(
         title = "Orders",
-        icon = Resources.Icon.Info
+        icon = Resources.Icon.Orders
     ),
     Settings(
         title = "Settings",
-        icon = Resources.Icon.Dollar
+        icon = Resources.Icon.Settings
     ),
     SignOut(
         title = "Sign Out",

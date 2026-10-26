@@ -7,6 +7,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.material3.ButtonDefaults
+import org.mz.killrs.shared.BrandGreen
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import coil3.compose.AsyncImage
@@ -140,7 +142,7 @@ fun ProfileScreen(
                                     }
                                 )
                                 if (viewModel.profileImageUrl != null) {
-                                    TextButton(
+                                    TextButton(colors = ButtonDefaults.textButtonColors(contentColor = BrandGreen),
                                         enabled = !viewModel.isSavingPhoto,
                                         onClick = {
                                             viewModel.savePhoto(null,

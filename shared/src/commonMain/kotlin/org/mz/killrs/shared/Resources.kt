@@ -16,6 +16,7 @@ import killrsgenetics.shared.generated.resources.mz_brand
 import killrsgenetics.shared.generated.resources.mz_welcome
 import killrsgenetics.shared.generated.resources.menu
 import killrsgenetics.shared.generated.resources.minus
+import killrsgenetics.shared.generated.resources.payments
 import killrsgenetics.shared.generated.resources.profile
 import killrsgenetics.shared.generated.resources.search
 import killrsgenetics.shared.generated.resources.settings
@@ -37,6 +38,8 @@ object Resources {
         val Menu = Res.drawable.hamburger_menu
         val Delete = Res.drawable.delete
         val Info = Res.drawable.info
+        val Orders = Res.drawable.payments
+        val Settings = Res.drawable.settings
         val ShoppingCartFilled = Res.drawable.shopping_cart
         val CategoriesFilled = Res.drawable.leaf
         val DollarFilled = Res.drawable.add_a_photo

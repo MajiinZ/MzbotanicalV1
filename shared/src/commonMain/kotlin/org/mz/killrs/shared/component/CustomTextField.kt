@@ -69,6 +69,7 @@ fun CustomTextField(
         shape = RoundedCornerShape(size = 6.dp),
         keyboardOptions = keyboardOptions,
         colors = TextFieldDefaults.colors(
+            cursorColor = IconSecondary,
             unfocusedContainerColor = SurfaceLighter,
             focusedContainerColor = SurfaceLighter,
             focusedTextColor = TextPrimary,

@@ -39,7 +39,7 @@ import org.mz.killrs.shared.FontSize
 import org.mz.killrs.shared.IconPrimary
 import org.mz.killrs.shared.Resources
 import org.mz.killrs.shared.Surface
-import org.mz.killrs.shared.SurfaceLighter
+import org.mz.killrs.shared.BrandGreenSoft
 import org.mz.killrs.shared.TextPrimary
 import org.mz.killrs.shared.TextSecondary
 import org.mz.killrs.shared.component.QuantityCounter
@@ -61,7 +61,7 @@ fun CartItemCard(
             .fillMaxWidth()
             .height(100.dp)
             .clip(RoundedCornerShape(size = 12.dp))
-            .background(SurfaceLighter)
+            .background(BrandGreenSoft)
     ) {
         // Product image
         AsyncImage(

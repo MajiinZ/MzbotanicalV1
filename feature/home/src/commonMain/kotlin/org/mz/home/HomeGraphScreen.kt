@@ -69,8 +69,8 @@ import org.mz.products_overview.ProductsOverviewScreen
 import rememberMessageBarState
 
 
-private val CollectionSurface = Color(0xFFF7F5EC)
-private val CollectionGreen = Color(0xFF124735)
+private val CollectionSurface = org.mz.killrs.shared.BrandCream
+private val CollectionGreen = org.mz.killrs.shared.BrandGreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
