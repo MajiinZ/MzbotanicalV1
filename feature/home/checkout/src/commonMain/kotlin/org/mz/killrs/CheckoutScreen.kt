@@ -45,6 +45,20 @@ fun CheckoutScreen(
     navigateToPaymentCompleted: (Boolean?, String?) -> Unit,
 
     ) {
+    if (!org.mz.killrs.shared.Constants.CHECKOUT_ENABLED) {
+        Scaffold(containerColor = Surface, topBar = {
+            TopAppBar(title = { Text("Checkout unavailable", color = TextPrimary) },
+                navigationIcon = { IconButton(onClick = navigateBack) {
+                    Icon(painterResource(Resources.Icon.BackArrow), "Back", tint = IconPrimary)
+                } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = Surface))
+        }) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding).padding(24.dp), verticalArrangement = Arrangement.Center) {
+                Text("Checkout is paused while the store is being prepared. No payment or order will be created.", color = TextPrimary)
+                PrimaryButton(text = "Back to browsing", onClick = navigateBack)
+            }
+        }
+        return
+    }
     val messageBarState = rememberMessageBarState()
     val viewModel = koinViewModel<CheckoutViewModel>()
     val screenState = viewModel.screenState

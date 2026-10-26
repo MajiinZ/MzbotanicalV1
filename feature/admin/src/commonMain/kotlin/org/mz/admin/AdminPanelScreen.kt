@@ -18,6 +18,8 @@ import androidx.compose.ui.unit.sp
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 import org.mz.killrs.shared.*
+import org.koin.compose.koinInject
+import org.mz.data.domain.AdminRepository
 
 private enum class AdminSection(val label: String, val title: String, val description: String, val icon: DrawableResource) {
     Products("Products", "Products & Inventory", "Catalog, stock, and product records", Resources.Icon.Categories),
@@ -47,6 +49,14 @@ private fun sampleRecords() = listOf(
 @Suppress("UNUSED_PARAMETER")
 @Composable
 fun AdminPanelScreen(navigateBack: () -> Unit, navigateToManageProduct: (String?) -> Unit) {
+    val repository = koinInject<AdminRepository>()
+    if (!repository.isCurrentUserAdmin()) {
+        Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
+            Text("Administrator access is required.", color = BrandGreen)
+            TextButton(onClick = navigateBack) { Text("Back", color = BrandGreen) }
+        }
+        return
+    }
     var selected by rememberSaveable { mutableStateOf<AdminSection?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     val records = remember { mutableStateListOf<DemoRecord>().apply { addAll(sampleRecords()) } }
@@ -58,6 +68,11 @@ fun AdminPanelScreen(navigateBack: () -> Unit, navigateToManageProduct: (String?
     var restrictRegions by remember { mutableStateOf(true) }
     var staffAccess by remember { mutableStateOf(true) }
     var reset by remember { mutableStateOf(false) }
+
+    if (selected == AdminSection.Products) {
+        AdminProductsScreen(navigateBack = { selected = null }, editProduct = navigateToManageProduct)
+        return
+    }
 
     fun updateRecord(record: DemoRecord, status: String) {
         val index = records.indexOfFirst { it.id == record.id }
@@ -89,9 +104,9 @@ fun AdminPanelScreen(navigateBack: () -> Unit, navigateToManageProduct: (String?
             item {
                 Surface(color = BrandGreenSoft, shape = RoundedCornerShape(16.dp)) {
                     Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                        Text("DEMO WORKSPACE", color = BrandGreen, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("ADMIN WORKSPACE", color = BrandGreen, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                         Spacer(Modifier.height(5.dp))
-                        Text("Fictional data. Actions affect this preview only and reset when you leave. No payments, shipments, or verification checks are performed.", color = BrandGreen, fontSize = 13.sp)
+                        Text("Products & Inventory uses real store records. Orders, Customers, and Settings remain demos. Checkout is paused.", color = BrandGreen, fontSize = 13.sp)
                     }
                 }
             }
@@ -119,7 +134,7 @@ fun AdminPanelScreen(navigateBack: () -> Unit, navigateToManageProduct: (String?
                                 Text(section.description, color = BrandTextMuted, fontSize = 13.sp)
                                 Spacer(Modifier.height(8.dp))
                                 Text(when (section) {
-                                    AdminSection.Products -> "${records.count { it.section == section }} sample listings"
+                                    AdminSection.Products -> "Manage real products and stock"
                                     AdminSection.Orders -> "${records.count { it.section == section && it.status != "Fulfilled" && it.status != "Cancelled" }} open sample orders"
                                     AdminSection.Customers -> "${records.count { it.section == section && it.status == "Review needed" }} awaiting review"
                                     AdminSection.Settings -> "Legal review pending"

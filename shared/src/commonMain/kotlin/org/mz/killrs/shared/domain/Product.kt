@@ -20,7 +20,9 @@ data class Product @OptIn(ExperimentalTime::class) constructor(
     val amountOfSeeds: String? = null,
     val isPopular: Boolean = false,
     val isNew: Boolean = false,
-    val isDiscounted: Boolean = false
+    val isDiscounted: Boolean = false,
+    val stockQuantity: Int = 0,
+    val isPublished: Boolean = false
 )
 
 enum class ProductCategory(
@@ -40,4 +42,15 @@ enum class ProductCategory(
         color = Color.Yellow
     ),
 
+}
+val Product.isCatalogVisible: Boolean get() = isPublished
+
+fun Product.inventoryValidationError(): String? = when {
+    title.isBlank() -> "Enter a product title."
+    stockQuantity < 0 -> "Stock must be a whole number of packs, zero or greater."
+    !price.isFinite() || price < 0 -> "Enter a valid non-negative price."
+    isPublished && !thumbnail.startsWith("https://") -> "Use an HTTPS photo URL before publishing."
+    isPublished && (description.isBlank() || price <= 0 || thumbnail.isBlank() || category !in ProductCategory.entries.map { it.name } || (amountOfSeeds?.toIntOrNull() ?: 0) <= 0) ->
+        "Publishing requires a description, positive price, photo, category, and seeds per pack."
+    else -> null
 }

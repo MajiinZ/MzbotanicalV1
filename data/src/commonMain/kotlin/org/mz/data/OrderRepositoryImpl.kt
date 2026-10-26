@@ -17,6 +17,9 @@ import org.mz.killrs.shared.domain.Order
         onSuccess: () -> Unit,
         onError: (String) -> Unit,
     ) {
+        if (!org.mz.killrs.shared.Constants.CHECKOUT_ENABLED) {
+            onError("Checkout is currently disabled."); return
+        }
         try {
             val currentUserId = getCurrentUserId()
             if (currentUserId != null) {

@@ -10,6 +10,7 @@ import org.mz.killrs.shared.util.RequestState
 
 interface AdminRepository {
     fun getCurrentUserId(): String?
+    fun isCurrentUserAdmin(): Boolean = false
     suspend fun createNewProduct(
         product: Product,
         onSuccess: () -> Unit,

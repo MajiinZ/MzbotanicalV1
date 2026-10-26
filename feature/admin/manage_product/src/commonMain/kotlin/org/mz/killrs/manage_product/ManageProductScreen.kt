@@ -21,6 +21,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -81,12 +83,28 @@ fun ManageProductScreen(
     productId: String? = null,
 ) {
     val viewModel = koinViewModel<ManageProductViewModel>()
+    if (!viewModel.isAuthorized) {
+        Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
+            Text("Administrator access is required.", color = TextPrimary)
+            PrimaryButton(text = "Back", onClick = navigateBack)
+        }
+        return
+    }
+    var confirmDelete by remember { mutableStateOf(false) }
     val screenState = viewModel.screenState
     val messageBarState = rememberMessageBarState()
     val photoPicker = koinInject<PhotoPicker>()
     var showCategoriesDialog by remember { mutableStateOf(false) }
     var dropDownMenuOpened by remember { mutableStateOf(false) }
     val thumbNailUploaderState = viewModel.thumbnailUploaderState
+
+    if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false },
+        title = { Text("Delete this product?") }, text = { Text("The product will be removed from inventory. This cannot be undone.") },
+        confirmButton = { TextButton(enabled = !viewModel.isSaving, onClick = {
+            confirmDelete = false
+            viewModel.deleteProduct(onSuccess = navigateBack, onError = messageBarState::addError)
+        }) { Text("Delete product") } },
+        dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } })
 
     photoPicker.InitializePhotoPicker(
         onImageSelect = { file ->
@@ -159,10 +177,7 @@ fun ManageProductScreen(
                                 text = { Text(text = "Delete", color = TextPrimary) },
                                 onClick = {
                                     dropDownMenuOpened = false
-                                    viewModel.deleteProduct(
-                                        onSuccess = navigateBack,
-                                        onError = { message -> messageBarState.addError(message) }
-                                    )
+                                    confirmDelete = true
 
                                 },
                             )
@@ -203,6 +218,12 @@ fun ManageProductScreen(
                         .verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    Text("Products save to your real inventory. Checkout remains disabled.", color = TextPrimary)
+                    if (viewModel.isLoading) LoadingCard(modifier = Modifier.height(80.dp))
+                    viewModel.loadError?.let { error ->
+                        Text(error, color = SurfaceError)
+                        PrimaryButton(text = "Retry loading", onClick = viewModel::loadProduct)
+                    }
                     // Thumbnail uploader
                     Box(
                         modifier = Modifier
@@ -248,7 +269,7 @@ fun ManageProductScreen(
                                             .clickable {
                                                 viewModel.deleteThumbnailFromStorage(
                                                     onSuccess = {
-                                                        messageBarState.addSuccess("Thumbnail deleted successfully!")
+                                                        messageBarState.addSuccess("Photo removed from this form. Save to apply.")
                                                     },
                                                     onError = {
                                                         messageBarState.addError(it)
@@ -275,6 +296,20 @@ fun ManageProductScreen(
                         )
                     }
 
+                    TextButton(enabled = !viewModel.isSaving && !viewModel.isLoading && !thumbNailUploaderState.isLoading(),
+                        onClick = { photoPicker.open() }) { Text("Choose or replace photo", color = TextPrimary) }
+                    CustomTextField(value = screenState.thumbnail, onValueChange = viewModel::updateThumbnailUrl,
+                        placeholder = "Photo URL (or select a photo above)",
+                        enabled = !viewModel.thumbnailUploaderState.isLoading() && !viewModel.isSaving,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+                    Text("Publishing", color = TextPrimary, fontSize = FontSize.MEDIUM)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(if (screenState.isPublished) "Published in customer catalog" else "Draft — hidden from customers", color = TextPrimary)
+                        Switch(checked = screenState.isPublished, onCheckedChange = viewModel::updatePublished)
+                    }
+                    Text("Drafts can be saved with just a title. Publish only after reviewing the product details.", color = TextPrimary)
+                    CustomTextField(value = viewModel.stockInput, onValueChange = viewModel::updateStockInput,
+                        placeholder = "Stock quantity (packs)", keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     // Form fields
                     CustomTextField(
                         value = screenState.title,
@@ -298,7 +333,7 @@ fun ManageProductScreen(
                         onValueChange = {
                             viewModel.updateAmountOfSeeds(it.toIntOrNull())
                         },
-                        placeholder = "Amount of Seeds",
+                        placeholder = "Seeds per pack",
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                     CustomTextField(
@@ -307,10 +342,7 @@ fun ManageProductScreen(
                         placeholder = "Strains"
                     )
                     CustomTextField(
-                        value = screenState.price.toString(),
-                        onValueChange = {
-                            viewModel.updatePrice(it.toDoubleOrNull() ?: screenState.price)
-                        },
+                        value = viewModel.priceInput, onValueChange = viewModel::updatePriceInput,
                         placeholder = "Price",
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         keyboardType = KeyboardType.Number
@@ -399,8 +431,9 @@ fun ManageProductScreen(
                     }
                     Spacer(modifier = Modifier.height(24.dp))
 
+                    viewModel.validationMessage?.let { Text(it, color = SurfaceError) }
                     PrimaryButton(
-                        text = if (productId == null) "Create" else "Update",
+                        text = if (viewModel.isSaving) "Saving…" else if (screenState.isPublished) "Save published product" else "Save draft",
                         icon = Resources.Icon.AddProduct,
                         enabled = viewModel.isFormValid,
                         onClick = {

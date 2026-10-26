@@ -4,6 +4,7 @@ package org.mz.killrs.shared
 
 object Constants {
     const val SERVER_PORT = 8081
+    const val CHECKOUT_ENABLED = false
 
     const val WEB_CLIENT_ID = "623171350158-ua9j5hm633ff73gqlk8tehbil5h9jr8l.apps.googleusercontent.com"
 

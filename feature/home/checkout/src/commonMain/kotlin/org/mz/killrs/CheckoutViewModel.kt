@@ -130,6 +130,9 @@ class CheckoutViewModel(
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
+        if (!org.mz.killrs.shared.Constants.CHECKOUT_ENABLED) {
+            onError("Checkout is currently disabled."); return
+        }
         if (isSubmitting) return
         if (completedOrder != null && completedOrder?.customerId == customerRepository.getCurrentUserId()) {
             onSuccess()

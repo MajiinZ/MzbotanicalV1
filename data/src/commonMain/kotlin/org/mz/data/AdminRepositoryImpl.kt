@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withTimeout
 import org.mz.data.domain.AdminRepository
 import org.mz.killrs.shared.Constants.ADMIN_EMAIL
+import org.mz.killrs.shared.domain.inventoryValidationError
 import org.mz.killrs.shared.domain.Product
 import org.mz.killrs.shared.util.RequestState
 import kotlin.uuid.ExperimentalUuidApi
@@ -21,7 +22,7 @@ import kotlin.uuid.Uuid
 class AdminRepositoryImpl : AdminRepository {
     override fun getCurrentUserId() = Firebase.auth.currentUser?.uid
 
-    private fun isAuthorizedAdmin(): Boolean =
+    override fun isCurrentUserAdmin(): Boolean =
         Firebase.auth.currentUser?.email.equals(ADMIN_EMAIL, ignoreCase = true)
 
     override suspend fun createNewProduct(
@@ -30,12 +31,13 @@ class AdminRepositoryImpl : AdminRepository {
         onError: (String) -> Unit,
     ) {
         try {
+            product.inventoryValidationError()?.let { onError(it); return }
             val currentUserId = getCurrentUserId()
-            if (currentUserId != null && isAuthorizedAdmin()) {
+            if (currentUserId != null && isCurrentUserAdmin()) {
                 val firestore = Firebase.firestore
                 val productCollection = firestore.collection(collectionPath = "product")
                 productCollection.document(product.id)
-                    .set(product.copy(title = product.title.lowercase()))
+                    .set(product.copy(title = product.title.lowercase())) { encodeDefaults = true }
                 onSuccess()
             } else {
                 onError("Administrator access is required.")
@@ -48,7 +50,7 @@ class AdminRepositoryImpl : AdminRepository {
 
     @OptIn(ExperimentalUuidApi::class)
     override suspend fun uploadImageToStorage(file: File): String? {
-        if (getCurrentUserId() == null || !isAuthorizedAdmin()) {
+        if (getCurrentUserId() == null || !isCurrentUserAdmin()) {
             throw IllegalStateException("Administrator access is required.")
         }
 
@@ -91,7 +93,7 @@ class AdminRepositoryImpl : AdminRepository {
         onError: (String) -> Unit,
     ) {
         try {
-            if (!isAuthorizedAdmin()) {
+            if (!isCurrentUserAdmin()) {
                 onError("Administrator access is required.")
                 return
             }
@@ -112,28 +114,15 @@ class AdminRepositoryImpl : AdminRepository {
     override fun readLastTenProducts(): Flow<RequestState<List<Product>>> = channelFlow {
         try {
             val userId = getCurrentUserId()
-            if (userId != null) {
+            if (userId != null && isCurrentUserAdmin()) {
                 val database = Firebase.firestore
                 database.collection(collectionPath = "product")
                     .orderBy("createdAt", Direction.DESCENDING)
-                    .limit(15)
+                    .limit(500)
                     .snapshots
                     .collectLatest { query ->
                         val products = query.documents.map { document ->
-                            Product(
-                                id = document.id,
-                                title = document.get(field = "title"),
-                                amountOfSeeds = document.get(field = "amountOfSeeds"),
-                                description = document.get(field = "description"),
-                                thumbnail = document.get(field = "thumbnail"),
-                                category = document.get(field = "category"),
-                                strains = document.get(field = "strains"),
-                                price = document.get(field = "price"),
-                                isPopular = document.get(field = "isPopular"),
-                                isDiscounted = document.get(field = "isDiscounted"),
-                                isNew = document.get(field = "isNew"),
-                                createdAt = document.get(field = "createdAt")
-                            )
+                            document.toProduct()
                         }
                         send(RequestState.Success(data = products.map { it.copy(title = it.title.uppercase()) }))
                     }
@@ -148,26 +137,13 @@ class AdminRepositoryImpl : AdminRepository {
     override suspend fun readProductById(id: String): RequestState<Product> {
         return try {
             val userId = getCurrentUserId()
-            if (userId != null) {
+            if (userId != null && isCurrentUserAdmin()) {
                 val database = Firebase.firestore
                 val productDocument = database.collection(collectionPath = "product")
                     .document(id)
                     .get()
                 if (productDocument.exists) {
-                    val product = Product(
-                        id = productDocument.id,
-                        title = productDocument.get(field = "title"),
-                        amountOfSeeds = productDocument.get(field = "amountOfSeeds"),
-                        description = productDocument.get(field = "description"),
-                        thumbnail = productDocument.get(field = "thumbnail"),
-                        category = productDocument.get(field = "category"),
-                        price = productDocument.get(field = "price"),
-                        isPopular = productDocument.get(field = "isPopular"),
-                        isDiscounted = productDocument.get(field = "isDiscounted"),
-                        isNew = productDocument.get(field = "isNew"),
-                        strains = productDocument.get(field = "strains"),
-                        createdAt = productDocument.get(field = "createdAt")
-                    )
+                    val product = productDocument.toProduct()
                     RequestState.Success(product.copy(title = product.title.uppercase()))
                 } else {
                     RequestState.Error("Selected product not found.")
@@ -208,7 +184,7 @@ class AdminRepositoryImpl : AdminRepository {
     ) {
         try {
             val userId = getCurrentUserId()
-            if (userId != null && isAuthorizedAdmin()) {
+            if (userId != null && isCurrentUserAdmin()) {
                 val database = Firebase.firestore
                 val productCollection = database.collection(collectionPath = "product")
                 val existingProduct = productCollection
@@ -235,8 +211,9 @@ class AdminRepositoryImpl : AdminRepository {
         onError: (String) -> Unit,
     ) {
         try {
+            product.inventoryValidationError()?.let { onError(it); return }
             val userId = getCurrentUserId()
-            if (userId != null && isAuthorizedAdmin()) {
+            if (userId != null && isCurrentUserAdmin()) {
                 val database = Firebase.firestore
                 val productCollection = database.collection(collectionPath = "product")
                 val existingProduct = productCollection
@@ -244,7 +221,7 @@ class AdminRepositoryImpl : AdminRepository {
                     .get()
                 if (existingProduct.exists) {
                     productCollection.document(product.id)
-                        .update(product.copy(title = product.title.lowercase()))
+                        .update(product.copy(title = product.title.lowercase())) { encodeDefaults = true }
                     onSuccess()
                 } else {
                     onError("Selected Product not found.")
@@ -264,7 +241,7 @@ class AdminRepositoryImpl : AdminRepository {
     ) {
         try {
             val userId = getCurrentUserId()
-            if (userId != null && isAuthorizedAdmin()) {
+            if (userId != null && isCurrentUserAdmin()) {
                 val database = Firebase.firestore
                 val productCollection = database.collection(collectionPath = "product")
                 val existingProduct = productCollection
@@ -289,7 +266,7 @@ class AdminRepositoryImpl : AdminRepository {
         channelFlow {
             try {
                 val userId = getCurrentUserId()
-                if (userId != null) {
+                if (userId != null && isCurrentUserAdmin()) {
                     val database = Firebase.firestore
 
 //                    val queryText = searchQuery.trim().lowercase()
@@ -302,25 +279,12 @@ class AdminRepositoryImpl : AdminRepository {
                         .snapshots
                         .collectLatest { query ->
                             val products = query.documents.map { document ->
-                                Product(
-                                    id = document.id,
-                                    title = document.get(field = "title"),
-                                    amountOfSeeds = document.get(field = "amountOfSeeds"),
-                                    description = document.get(field = "description"),
-                                    thumbnail = document.get(field = "thumbnail"),
-                                    category = document.get(field = "category"),
-                                    price = document.get(field = "price"),
-                                    isPopular = document.get(field = "isPopular"),
-                                    isDiscounted = document.get(field = "isDiscounted"),
-                                    isNew = document.get(field = "isNew"),
-                                    strains = document.get(field = "strains"),
-                                    createdAt = document.get(field = "createdAt")
-                                )
+                                document.toProduct()
                             }
                             send(
                                 RequestState.Success(
                                     products
-                                        .filter { it.title.contains(searchQuery) }
+                                        .filter { it.title.contains(searchQuery.trim(), ignoreCase = true) }
                                         .map { it.copy(title = it.title.uppercase()) }
                                 )
                             )
