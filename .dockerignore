@@ -1,0 +1,9 @@
+**
+!Dockerfile
+!webStorefront/
+!webStorefront/**
+webStorefront/node_modules
+webStorefront/dist
+webStorefront/.test-build
+webStorefront/.env*
+webStorefront/*.log

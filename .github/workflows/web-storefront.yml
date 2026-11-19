@@ -1,0 +1,22 @@
+name: Web storefront
+on:
+  push:
+    paths: ['webStorefront/**', 'Dockerfile', '.dockerignore', '.github/workflows/web-storefront.yml']
+  pull_request:
+    paths: ['webStorefront/**', 'Dockerfile', '.dockerignore', '.github/workflows/web-storefront.yml']
+permissions:
+  contents: read
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: webStorefront/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: webStorefront
+      - run: npm test && npm run build
+        working-directory: webStorefront
