@@ -35,6 +35,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.viewmodel.koinViewModel
+import org.mz.killrs.auth.component.EmailPasswordForm
 import org.mz.killrs.auth.component.GoogleAuthenticationButton
 import org.mz.killrs.shared.Exo2FontRegular
 import org.mz.killrs.shared.FontSize
@@ -123,40 +124,63 @@ fun AuthenticationScreen(
                         )
                     Spacer(Modifier.height(24.dp))
 
+                    val onSignedIn: () -> Unit = {
+                        scope.launch {
+                            loadingState = false
+                            messageBarState.addSuccess("Authentication successful")
+                            delay(1500)
+                            navigateToHome()
+                        }
+                    }
+                    val onAuthError: (String) -> Unit = { message ->
+                        loadingState = false
+                        messageBarState.addError(
+                            if (message.contains("network", ignoreCase = true)) "No internet connection" else message
+                        )
+                    }
+
+                    EmailPasswordForm(
+                        loading = loadingState,
+                        textColor = brandCream,
+                        onSignIn = { email, password ->
+                            loadingState = true
+                            viewModel.signInWithEmail(email, password, onSignedIn, onAuthError)
+                        },
+                        onCreateAccount = { email, password, fullName ->
+                            loadingState = true
+                            viewModel.signUpWithEmail(
+                                email = email,
+                                password = password,
+                                fullName = fullName,
+                                onSuccess = onSignedIn,
+                                onConfirmEmail = {
+                                    loadingState = false
+                                    messageBarState.addSuccess("Check your inbox to confirm your email, then sign in.")
+                                },
+                                onError = onAuthError,
+                            )
+                        },
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        modifier = Modifier.fillMaxWidth(),
+                        text = "or",
+                        textAlign = TextAlign.Center,
+                        fontFamily = Exo2FontRegular(),
+                        fontSize = FontSize.REGULAR,
+                        color = brandCream
+                    )
+                    Spacer(Modifier.height(16.dp))
+
                     GoogleAuthenticationButton(
                         loading = loadingState,
                         onClick = { loadingState = true },
                         onResult = { result ->
-                            result.onSuccess { user ->
-                                viewModel.createCustomer(
-                                    user = user,
-                                    onSuccess = {
-                                        scope.launch {
-                                            loadingState = false
-                                            messageBarState.addSuccess("Authentication successful")
-                                            delay(2000)
-                                            navigateToHome()
-                                        }
-                                    },
-                                    onError = { message ->
-                                        scope.launch {
-                                            loadingState = false
-                                            messageBarState.addError(message)
-                                        }
-                                    },
-                                )
+                            result.onSuccess { idToken ->
+                                viewModel.signInWithGoogle(idToken, onSignedIn, onAuthError)
                             }.onFailure { error ->
-                                val message = when {
-                                    error.message?.contains("network", ignoreCase = true) == true ->
-                                        "No internet connection"
-
-                                    error.message?.contains("idtoken is null", ignoreCase = true) == true ->
-                                        "Google Sign-In could not create an ID token. Check the Firebase OAuth configuration."
-
-                                    else -> error.message ?: "Google Sign-In failed. Please try again."
-                                }
-                                messageBarState.addError(message)
-                                loadingState = false
+                                onAuthError(error.message ?: "Google Sign-In failed. Please try again.")
                             }
                         }
                     )

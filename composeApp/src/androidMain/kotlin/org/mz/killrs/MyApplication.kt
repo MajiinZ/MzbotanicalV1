@@ -1,8 +1,6 @@
 package org.mz.killrs
 
 import android.app.Application
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.initialize
 import org.killrs.di.initializeKoin
 import org.koin.android.ext.koin.androidContext
 
@@ -14,6 +12,5 @@ class MyApplication: Application() {
                 androidContext(this@MyApplication)
             }
         )
-        Firebase.initialize(context = this)
     }
 }

@@ -14,7 +14,8 @@ firebase = "2.1.0"
 koin = "4.1.0-Beta11"
 serialization = "1.7.3"
 coil3 = "3.0.4"
-ktor = "3.0.3"
+ktor = "3.1.2"
+supabase = "3.1.4"
 coroutines = "1.10.1"
 messagebar = "1.0.7"
 google = "4.4.3"
@@ -49,7 +50,13 @@ auth-kmp = { module = "io.github.mirzemehdi:kmpauth-google", version.ref = "auth
 auth-firebase-kmp = { module = "io.github.mirzemehdi:kmpauth-firebase", version.ref = "auth" }
 kmp-notifier = { module = "io.github.mirzemehdi:kmpnotifier", version.ref = "notifier" }
 
-# Firebase
+# Supabase (supabase-kt 3.1.x is the newest line built for Kotlin 2.1)
+supabase-auth = { module = "io.github.jan-tennert.supabase:auth-kt", version.ref = "supabase" }
+supabase-postgrest = { module = "io.github.jan-tennert.supabase:postgrest-kt", version.ref = "supabase" }
+supabase-storage = { module = "io.github.jan-tennert.supabase:storage-kt", version.ref = "supabase" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+
+# Firebase (no longer used by the apps; kept for reference while migrating)
 firebase-app = { module = "dev.gitlive:firebase-app", version.ref = "firebase" }
 firebase-firestore = { module = "dev.gitlive:firebase-firestore", version.ref = "firebase" }
 firebase-storage = { module = "dev.gitlive:firebase-storage", version.ref = "firebase" }

@@ -40,7 +40,7 @@ class ProfileViewModel(
     var isSavingPhoto by mutableStateOf(false)
         private set
 
-    fun savePhoto(file: dev.gitlive.firebase.storage.File?, onSuccess: () -> Unit, onError: (String) -> Unit) {
+    fun savePhoto(file: org.mz.killrs.shared.domain.UploadFile?, onSuccess: () -> Unit, onError: (String) -> Unit) {
         if (isSavingPhoto) return
         isSavingPhoto = true
         viewModelScope.launch {

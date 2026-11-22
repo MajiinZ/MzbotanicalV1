@@ -8,12 +8,15 @@ import androidx.compose.material3.ButtonDefaults
 import org.mz.killrs.shared.BrandGreen
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import dev.gitlive.firebase.storage.File
+import androidx.compose.ui.platform.LocalContext
+import org.mz.killrs.shared.domain.UploadFile
+import org.mz.killrs.shared.domain.uriUploadFile
 
 @Composable
-actual fun ProfilePhotoPicker(enabled: Boolean, hasPhoto: Boolean, onSelected: (File) -> Unit) {
+actual fun ProfilePhotoPicker(enabled: Boolean, hasPhoto: Boolean, onSelected: (UploadFile) -> Unit) {
+    val context = LocalContext.current
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        if (uri != null) onSelected(File(uri))
+        if (uri != null) onSelected(uriUploadFile(context, uri))
     }
     TextButton(colors = ButtonDefaults.textButtonColors(contentColor = BrandGreen),
         enabled = enabled,

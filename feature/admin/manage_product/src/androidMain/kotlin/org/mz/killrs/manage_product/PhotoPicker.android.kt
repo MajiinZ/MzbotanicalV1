@@ -9,7 +9,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import dev.gitlive.firebase.storage.File
+import androidx.compose.ui.platform.LocalContext
+import org.mz.killrs.shared.domain.UploadFile
+import org.mz.killrs.shared.domain.uriUploadFile
 
 actual class PhotoPicker {
     // Keep your launcher var name
@@ -20,14 +22,15 @@ actual class PhotoPicker {
     }
 
     @Composable
-    actual fun InitializePhotoPicker(onImageSelect: (File?) -> Unit) {
+    actual fun InitializePhotoPicker(onImageSelect: (UploadFile?) -> Unit) {
         val openPicker by remember { launcherState }
 
+        val context = LocalContext.current
         val imagePickerLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.PickVisualMedia()
         ) { uri ->
             if (uri != null) {
-                onImageSelect(File(uri))
+                onImageSelect(uriUploadFile(context, uri))
             } else {
                 onImageSelect(null)
             }

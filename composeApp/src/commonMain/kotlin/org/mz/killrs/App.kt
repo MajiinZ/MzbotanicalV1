@@ -10,13 +10,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import com.mmk.kmpauth.google.GoogleAuthCredentials
-import com.mmk.kmpauth.google.GoogleAuthProvider
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.koin.compose.koinInject
 import org.mz.data.domain.CustomerRepository
 import org.mz.killrs.navigation.SetupNavGraph
-import org.mz.killrs.shared.Constants.WEB_CLIENT_ID
 import org.mz.killrs.shared.navigation.Screen
 
 @Composable
@@ -27,12 +24,9 @@ fun App() {
         var appReady by remember { mutableStateOf(false) }
 
         LaunchedEffect(Unit) {
-            // Require an explicit Google sign-in whenever the app is freshly launched.
-            // This prevents Firebase from restoring the previous user's session.
+            // Require an explicit sign-in whenever the app is freshly launched,
+            // so a previous user's saved Supabase session is never reused.
             customerRepository.signOut()
-            GoogleAuthProvider.create(
-                credentials = GoogleAuthCredentials(serverId = WEB_CLIENT_ID)
-            )
             appReady = true
         }
 

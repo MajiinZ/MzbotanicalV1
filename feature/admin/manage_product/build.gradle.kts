@@ -27,7 +27,6 @@ kotlin {
             implementation(libs.ktor.android.client)
             implementation(libs.androidx.activity.compose)
             implementation(libs.koin.android)
-            implementation(libs.firebase.common.ktx)
         }
 
         commonMain.dependencies {
@@ -44,10 +43,6 @@ kotlin {
 
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)
-            implementation(libs.firebase.firestore)
-            implementation(libs.firebase.storage)
-            implementation(libs.firebase.app)
-            implementation(libs.firebase.common)
 
 
             implementation(libs.coil3)

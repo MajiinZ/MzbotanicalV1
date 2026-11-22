@@ -29,6 +29,7 @@ import org.mz.killrs.CheckoutViewModel
 
 
 val sharedModule = module {
+    single { org.mz.data.AuthRepository() }
     single<CustomerRepository>{CustomerRepositoryImpl()}
     single<AdminRepository>{ AdminRepositoryImpl() }
     single<ProductRepository>{ ProductRepositoryImpl() }

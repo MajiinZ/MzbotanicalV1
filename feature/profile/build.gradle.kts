@@ -29,7 +29,6 @@ kotlin {
         }
 
         commonMain.dependencies {
-            implementation(libs.firebase.storage)
             implementation(libs.coil3.compose)
             implementation(compose.runtime)
             implementation(compose.foundation)

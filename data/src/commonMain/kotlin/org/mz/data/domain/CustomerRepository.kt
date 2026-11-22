@@ -1,16 +1,16 @@
 package org.mz.data.domain
 
-import dev.gitlive.firebase.auth.FirebaseUser
+import org.mz.killrs.shared.domain.UploadFile
 import kotlinx.coroutines.flow.Flow
 import org.mz.killrs.shared.domain.CartItem
 import org.mz.killrs.shared.domain.Customer
 import org.mz.killrs.shared.util.RequestState
 
 interface CustomerRepository {
-    suspend fun updateProfilePhoto(file: dev.gitlive.firebase.storage.File?): RequestState<String?>
+    suspend fun updateProfilePhoto(file: UploadFile?): RequestState<String?>
     fun getCurrentUserId(): String?
+    /** Confirms the signed-in user's customer row (created by the database on sign-up). */
     suspend fun createCustomer(
-        user: FirebaseUser?,
         onSuccess: () -> Unit,
         onError: (String) -> Unit,
     )

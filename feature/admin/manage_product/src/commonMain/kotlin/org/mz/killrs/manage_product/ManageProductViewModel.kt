@@ -6,7 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dev.gitlive.firebase.storage.File
+import org.mz.killrs.shared.domain.UploadFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import org.mz.data.domain.AdminRepository
@@ -78,7 +78,7 @@ class ManageProductViewModel(private val adminRepository: AdminRepository, saved
         }
     }
 
-    fun uploadThumbnailToStorage(file: File?, onSuccess: () -> Unit) {
+    fun uploadThumbnailToStorage(file: UploadFile?, onSuccess: () -> Unit) {
         if (!isAuthorized || isSaving || isLoading || loadError != null || file == null || thumbnailUploaderState.isLoading()) return
         thumbnailUploaderState = RequestState.Loading
         viewModelScope.launch {
