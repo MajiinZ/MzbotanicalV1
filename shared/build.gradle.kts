@@ -42,6 +42,8 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtime.compose)
 
             implementation(libs.kotlinx.serialization)
+            // Navigation 3 keys (NavKey) live in the shared Screen definitions
+            api(libs.navigation3.ui)
 
             implementation(libs.koin.core)
             implementation(libs.koin.compose)

@@ -4,7 +4,9 @@ import org.koin.core.KoinApplication
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.viewModelOf
+import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
+import org.mz.killrs.shared.domain.ProductCategory
 import org.mz.admin.AdminPanelViewModel
 import org.mz.data.AdminRepositoryImpl
 import org.mz.data.CustomerRepositoryImpl
@@ -42,13 +44,15 @@ val sharedModule = module {
     viewModelOf(::HomeGraphViewModel)
     viewModelOf(::OrdersViewModel)
     viewModelOf(::ProfileViewModel)
-    viewModelOf(::ManageProductViewModel)
+    // Route arguments are passed as Koin parameters from the Navigation 3 keys
+    // (Navigation 3 does not copy route arguments into SavedStateHandle).
+    viewModel { params -> ManageProductViewModel(get(), params.getOrNull<String>()) }
     viewModelOf(::AdminPanelViewModel)
     viewModelOf(::ProductsOverviewViewmodel)
-    viewModelOf(::DetailsViewModel)
+    viewModel { params -> DetailsViewModel(get(), get(), params.get<String>()) }
     viewModelOf(::CartViewModel)
     viewModelOf(::CategoriesViewModel)
-    viewModelOf(::CategorySearchViewmodel)
+    viewModel { params -> CategorySearchViewmodel(get(), params.get<ProductCategory>()) }
     viewModelOf(::CheckoutViewModel)
 }
 

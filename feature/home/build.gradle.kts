@@ -38,7 +38,8 @@ kotlin {
 
             implementation(libs.koin.compose)
             implementation(libs.koin.compose.viewmodel)
-            implementation(libs.compose.navigation)
+            implementation(libs.navigation3.ui)
+            implementation(libs.androidx.lifecycle.viewmodel.navigation3)
 
             implementation(libs.messagebar.kmp)
 

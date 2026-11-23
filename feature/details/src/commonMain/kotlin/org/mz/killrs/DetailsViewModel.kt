@@ -3,7 +3,6 @@ package org.mz.killrs
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.SharingStarted
@@ -17,11 +16,12 @@ import org.mz.killrs.shared.util.RequestState
 class DetailsViewModel(
     private val productRepository: ProductRepository,
     private val customerRepository: CustomerRepository,
-    private val savedStateHandle: SavedStateHandle,
+    /** Passed explicitly from the Navigation 3 key (Screen.Details.id). */
+    private val productId: String,
 ) : ViewModel() {
 
     val product = productRepository.readProductByIdFlow(
-        savedStateHandle.get<String>("id") ?: ""
+        productId
     ).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -58,8 +58,7 @@ class DetailsViewModel(
         onError: (String) -> Unit
     ) {
         viewModelScope.launch {
-            val productId = savedStateHandle.get<String>("id")
-            if (productId != null) {
+            if (productId.isNotEmpty()) {
                 customerRepository.addItemToCart(
                     cartItem = CartItem(
                         productId = productId,

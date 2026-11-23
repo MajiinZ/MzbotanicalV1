@@ -41,7 +41,7 @@ fun App() {
             visible = appReady
         ) {
             SetupNavGraph(
-                startDestination = Screen.Auth
+                startDestination = Screen.AgeGate
             )
         }
     }

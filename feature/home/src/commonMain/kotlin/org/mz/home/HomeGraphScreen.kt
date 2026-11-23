@@ -36,11 +36,12 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
-import androidx.navigation.toRoute
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.NavDisplay
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.viewmodel.koinViewModel
 import org.mz.home.component.BottomBar
@@ -63,6 +64,9 @@ import org.mz.killrs.shared.SurfaceLighter
 import org.mz.killrs.shared.TextPrimary
 import org.mz.killrs.shared.domain.ProductCategory
 import org.mz.killrs.shared.navigation.Screen
+import org.mz.killrs.shared.navigation.ScreenSavedStateConfiguration
+import org.mz.killrs.shared.navigation.navigateUp
+import org.mz.killrs.shared.navigation.switchSection
 import org.mz.killrs.shared.util.RequestState
 import org.mz.killrs.shared.util.getScreenWidth
 import org.mz.products_overview.ProductsOverviewScreen
@@ -83,20 +87,28 @@ fun HomeGraphScreen(
     navigateToCategorySearch: (String) -> Unit,
     navigateToCheckout: (String) -> Unit
 ) {
-    val navController = rememberNavController()
-    val currentRoute = navController.currentBackStackEntryAsState()
+    // Storefront back stack (Navigation 3). Shape: [ProductsOverview, <section>, ...section sub-screens]
+    // where <section> is a bottom-bar tab or drawer destination. ProductsOverview stays at the root.
+    val backStack = rememberNavBackStack(ScreenSavedStateConfiguration, Screen.ProductsOverview)
+
+    // Sub-stacks of sections the user switched away from, restored when they come back
+    // (what Navigation 2's saveState/restoreState did). Kept in memory for this screen.
+    val savedSections = remember { mutableMapOf<NavKey, List<NavKey>>() }
 
     val selectedDestination by remember {
         derivedStateOf {
-            val route = currentRoute.value?.destination?.route.orEmpty()
-            when {
-                route.contains(BottomBarDestination.Cart.screen.toString()) -> BottomBarDestination.Cart
-                route.contains(BottomBarDestination.Profile.screen.toString()) -> BottomBarDestination.Profile
-                route.contains(BottomBarDestination.Categories.screen.toString()) -> BottomBarDestination.Categories
+            when (backStack.lastOrNull()) {
+                Screen.Cart -> BottomBarDestination.Cart
+                Screen.Profile -> BottomBarDestination.Profile
+                Screen.Categories -> BottomBarDestination.Categories
                 else -> BottomBarDestination.ProductsOverview
             }
         }
     }
+
+    /** Switch storefront section (bottom bar / drawer), preserving each section's history. */
+    fun navigateToSection(destination: Screen) =
+        backStack.switchSection(destination, root = Screen.ProductsOverview, savedSections = savedSections)
 
     val isCollectionScreen by remember {
         derivedStateOf {
@@ -125,19 +137,14 @@ fun HomeGraphScreen(
 
     fun navigateFromDrawer(destination: Screen) {
         drawerState.value = CustomDrawerState.Closed
-        navController.navigate(destination) {
-            launchSingleTop = true
-            popUpTo<Screen.ProductsOverview> { saveState = true }
-            restoreState = true
-        }
+        navigateToSection(destination)
     }
 
     val screenTitle by remember {
         derivedStateOf {
-            val route = currentRoute.value?.destination?.route.orEmpty()
-            when {
-                route.contains(Screen.Orders.toString()) -> "Orders"
-                route.contains(Screen.Settings.toString()) -> "Settings"
+            when (backStack.lastOrNull()) {
+                Screen.Orders -> "Orders"
+                Screen.Settings -> "Settings"
                 else -> if (isCollectionScreen) "MZBotanicals" else selectedDestination.title
             }
         }
@@ -277,17 +284,21 @@ fun HomeGraphScreen(
                                 bottom = if (isCollectionScreen) 0.dp else padding.calculateBottomPadding()
                             )
                     ) {
-                        NavHost(
+                        NavDisplay(
                             modifier = Modifier.weight(1f),
-                            navController = navController,
-                            startDestination = Screen.ProductsOverview
-                        ) {
-                            composable<Screen.ProductsOverview> {
+                            backStack = backStack,
+                            onBack = { backStack.navigateUp() },
+                            entryDecorators = listOf(
+                                rememberSaveableStateHolderNavEntryDecorator(),
+                                rememberViewModelStoreNavEntryDecorator(),
+                            ),
+                            entryProvider = entryProvider {
+                            entry<Screen.ProductsOverview> {
                                 ProductsOverviewScreen(
                                     navigateToDetails = navigateToDetails
                                 )
                             }
-                            composable<Screen.Cart> {
+                            entry<Screen.Cart> {
                                 CartScreen(
                                     navigateToDetails = navigateToDetails,
                                     navigateToCheckout = navigateToCheckout,
@@ -302,55 +313,49 @@ fun HomeGraphScreen(
 
                                 )
                             }
-                            composable<Screen.Profile> {
+                            entry<Screen.Profile> {
                                 ProfileScreen(
-                                    navigateBack = { navController.navigateUp() }
+                                    navigateBack = { backStack.navigateUp() }
                                 )
                             }
-                            composable<Screen.Categories> {
+                            entry<Screen.Categories> {
                                 CategoriesScreen(
                                     navigateToCategories = { categoryName ->
-                                        navController.navigate(Screen.CategorySearch(categoryName))
+                                        backStack.add(Screen.CategorySearch(categoryName))
                                     }
                                 )
                             }
-                            composable<Screen.Orders> {
+                            entry<Screen.Orders> {
                                OrdersScreen(navigateToShop = { navigateFromDrawer(Screen.ProductsOverview) }
                                 )
                             }
-                            composable<Screen.Settings> {
+                            entry<Screen.Settings> {
                                 SettingsScreen()
                             }
-                            composable<Screen.Details> {
+                            entry<Screen.Details> { key ->
                                 DetailsScreen(
-                                    navigateBack = { navController.popBackStack() },
+                                    productId = key.id,
+                                    navigateBack = { backStack.navigateUp() },
                                     navigateToCart = { navigateFromDrawer(Screen.Cart) }
                                 )
                             }
-                            composable<Screen.CategorySearch> {
-                                val category =
-                                    ProductCategory.valueOf(it.toRoute<Screen.CategorySearch>().category.toString())
+                            entry<Screen.CategorySearch> { key ->
+                                val category = ProductCategory.valueOf(key.category.toString())
                                 CategorySearchScreen(
                                     category = category,
-                                    navigateBack = { navController.navigateUp() },
+                                    navigateBack = { backStack.navigateUp() },
                                     navigateToDetails = { id ->
-                                        navController.navigate(Screen.Details(id))
+                                        backStack.add(Screen.Details(id))
                                     }
                                 )
                             }
-                        }
+                            }
+                        )
                         Spacer(modifier = Modifier.height(12.dp))
                         Box(modifier = Modifier.padding(12.dp)) {
                             BottomBar(
                                 onSelect = { destination ->
-                                    navController.navigate(destination.screen) {
-                                        launchSingleTop = true
-                                        popUpTo<Screen.ProductsOverview> {
-                                            saveState = true
-                                            inclusive = false
-                                        }
-                                        restoreState = true
-                                    }
+                                    navigateToSection(destination.screen)
                                 },
                                 selected = selectedDestination,
                                 customer = customer

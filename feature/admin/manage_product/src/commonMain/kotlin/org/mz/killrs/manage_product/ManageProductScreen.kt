@@ -52,6 +52,7 @@ import coil3.request.crossfade
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.koinInject
 import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
 import org.mz.killrs.shared.BorderIdle
 import org.mz.killrs.shared.ButtonPrimary
 import org.mz.killrs.shared.Exo2FontRegular
@@ -82,7 +83,7 @@ fun ManageProductScreen(
     navigateBack: () -> Unit,
     productId: String? = null,
 ) {
-    val viewModel = koinViewModel<ManageProductViewModel>()
+    val viewModel = koinViewModel<ManageProductViewModel> { parametersOf(productId) }
     if (!viewModel.isAuthorized) {
         Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
             Text("Administrator access is required.", color = TextPrimary)
