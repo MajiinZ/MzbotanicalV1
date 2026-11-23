@@ -1,0 +1,8 @@
+# Storefront regression checks
+
+- **Home and age gate:** Home shows “Good things start with great genetics.” Explore and category tiles request a date of birth before showing the catalog. Closing the dialog returns to browsing the home page; an approved test date continues to the intended destination.
+- **Catalog:** Open a category tile and check the URL, selected category, result count and pack facts. Search for a named item, reload/open its URL, remove the search or clear both filters, and try a query with no results. Open a detail page and check Back to collection restores the filters.
+- **Product:** Confirm pack count, availability, price and checkout state. Open a real supplied image and dismiss it. A record without a photo or approved provenance should not claim to have either. Check missing and unavailable listings.
+- **Account flows:** A signed-out shopper sees “Continue with Google” on Cart, Orders and Account. With fixture data, test sign-in, cart quantity and removal, order history, profile save, opening/closing the deletion dialog, and sign-out. Never submit a deletion request in a live account for QA.
+- **Merchant:** From the footer or mobile menu open “For breeders & seed banks” without entering the consumer catalog. “See the demo” opens the interactive test workspace. Editing a draft does not change the shopper view until “Publish demo listing” is used. Reload resets the sample; no actual listing is created.
+- **Responsive:** Repeat key navigation, filter and demo flows at desktop and 375px. Verify keyboard focus, no horizontal overflow and no new browser errors.

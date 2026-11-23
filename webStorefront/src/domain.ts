@@ -24,10 +24,13 @@ export function normalizeProduct(id: string, value: unknown): Product | null {
   if (!validId(id) || data.isPublished !== true || !text(data.title, 200).trim() || priceCents === null || priceCents <= 0 || priceCents > 10000000 ||
       !integer(data.stockQuantity, 0, 1000000000)) return null;
   const pack = typeof data.amountOfSeeds === 'string' && /^\d+$/.test(data.amountOfSeeds) ? Number(data.amountOfSeeds) : data.amountOfSeeds;
+  const source = object(data.provenance), name = text(source.name, 150).trim(), url = safeHttpsUrl(source.url);
+  const provenance = source.approved === true && name && url ? {name, url} : undefined;
   return {id, title: text(data.title, 200), description: text(data.description), priceCents,
     thumbnail: safeHttpsUrl(data.thumbnail), category: text(data.category, 80),
     packSize: integer(pack, 1, 10000) ? pack : null, stockQuantity: data.stockQuantity,
-    isNew: data.isNew === true, isPopular: data.isPopular === true, isDiscounted: data.isDiscounted === true};
+    isNew: data.isNew === true, isPopular: data.isPopular === true, isDiscounted: data.isDiscounted === true,
+    ...(provenance ? {provenance} : {})};
 }
 
 export function parseCart(value: unknown): CartLine[] {

@@ -18,6 +18,7 @@ export interface Product {
   isNew: boolean;
   isPopular: boolean;
   isDiscounted: boolean;
+  provenance?: {name: string; url: string};
 }
 
 export interface CartLine {

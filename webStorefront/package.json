@@ -5,6 +5,7 @@
   "engines": { "node": ">=24.12.0" },
   "scripts": {
     "build": "tsc --noEmit && node build.cjs",
+    "build:review": "tsc --noEmit && node build.cjs --review",
     "start": "node server.cjs",
     "test": "node test.cjs"
   },

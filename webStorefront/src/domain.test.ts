@@ -1,10 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {changeCart, moneyCents, normalizeBusiness, normalizeOrder, normalizeProduct, normalizeProfile, parseCart, safeHttpsUrl} from './domain';
+import {parseStorefrontHash, requiresAge, storefrontHash} from './catalog-route';
 
 const fixture = {title: 'A real published pack', price: 29.99, description: 'Description', thumbnail: 'https://example.com/photo.png',
   category: 'Hybrid', amountOfSeeds: '6', stockQuantity: 8, isPublished: true, isNew: true};
 const product = normalizeProduct('sku', fixture)!;
+
+test('catalog URLs round-trip filters across reloads and product links', () => {
+  const filters = {category: 'Hybrid', search: 'A + B & C'} as const;
+  assert.equal(storefrontHash('explore', '', filters), '#/explore?category=hybrid&q=A+%2B+B+%26+C');
+  assert.deepEqual(parseStorefrontHash(storefrontHash('product', 'sample-seed', filters)), {route:'product', productId:'sample-seed', filters});
+  assert.equal(storefrontHash('explore', '', {category:'All', search:'  '}), '#/explore');
+  assert.deepEqual(parseStorefrontHash('#/explore?category=Unlisted&q=' + 'a'.repeat(110)).filters, {category:'All', search:'a'.repeat(100)});
+  assert.equal(parseStorefrontHash('#/product/%zz').route, 'home');
+  assert.equal(requiresAge('explore'), true);
+  assert.equal(requiresAge('product'), true);
+  assert.equal(requiresAge('merchants'), false);
+});
+
+test('breeder attribution appears only with an explicitly approved name and public HTTPS source', () => {
+  const source = {approved:true, name:'Verified source', url:'https://example.com/breeder'};
+  assert.deepEqual(normalizeProduct('sku', {...fixture, provenance:source})?.provenance, {name:source.name, url:source.url});
+  for (const provenance of [undefined, {...source, approved:false}, {...source, name:' '}, {...source, url:'javascript:unsafe'}, {...source, url:'https://user:secret@example.com/'}]) {
+    assert.equal(normalizeProduct('sku', {...fixture, provenance})?.provenance, undefined);
+  }
+});
 
 test('catalog exposes only valid published products and preserves cents, pack size and stock without invented discounts', () => {
   assert.equal(product.priceCents, 2999); assert.equal(product.packSize, 6); assert.equal(product.stockQuantity, 8);

@@ -1,6 +1,10 @@
 import './style.css';
 import {subscribeStore, signIn, signOut, addToCart, setCartQuantity, requestAccountDeletion, updateProfile} from './firebase-store';
 import type {StoreState, Product, StoreOrder, ProfileUpdate, CartLine} from './types';
+import {catalogCategories, catalogCategory, cleanSearch, parseStorefrontHash, requiresAge, storefrontHash, type CatalogFilters, type Route} from './catalog-route';
+import {normalizeProduct} from './domain';
+
+declare const __MZ_REVIEW_BUILD__: boolean;
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const money = (cents: number) => new Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD'}).format(cents / 100);
@@ -26,7 +30,7 @@ const icons: Record<string, string> = {
 const icon = (name: string, className = '') => `<svg class="icon ${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] ?? icons.leaf}</svg>`;
 function imageUrl(value: string | null | undefined): string | null {
   if (!value) return null;
-  try { const url = new URL(value, location.origin); return url.protocol === 'https:' || url.origin === location.origin ? url.href : null; }
+  try { const url = new URL(value, location.origin); return url.protocol === 'https:' && !url.username && !url.password ? url.href : null; }
   catch { return null; }
 }
 function externalLink(url: string | undefined, label: string): string {
@@ -42,10 +46,12 @@ function adultDate(value: string): boolean {
   return age >= 18;
 }
 const deniedDate = storageGet('mz-web-age-denied');
-const ui = {route: 'home', productId: '', search: '', category: 'All', busy: '', toast: '', toastError: false,
+const ui = {route: 'home' as Route, productId: '', search: '', category: 'All' as CatalogFilters['category'], busy: '', toast: '', toastError: false,
   modal: '' as '' | 'age' | 'delete' | 'menu' | 'image', agePassed: storageGet('mz-web-age-verified', true) === 'yes',
-  ageDenied: Boolean(deniedDate && !adultDate(deniedDate)), ageError: '', ageAction: 'browse', ageDestination: 'explore', ageProductId: '', birthDate: '', quantity: 1,
+  ageDenied: Boolean(deniedDate && !adultDate(deniedDate)), ageError: '', ageAction: 'browse', ageDestination: '#/explore', birthDate: '', quantity: 1,
   profileDraft: {} as Partial<ProfileUpdate>, profileDirty: false, profileUid: '', offline: !navigator.onLine};
+const demoDefaults = {title: 'Sample Hybrid', category: 'Hybrid', pack: '6', stock: '12', price: '24.00'};
+let demoDraft = {...demoDefaults}, demoListing: Product | null = null, demoMessage = '', demoOpen = false;
 let store: StoreState = {authReady: false, user: null, products: [], cart: [], orders: [], profile: null,
   deletionStatus: null, business: null, loading: true, error: null};
 let toastTimer: ReturnType<typeof setTimeout> | undefined;
@@ -70,19 +76,45 @@ function beginSignIn(): void {
   if (!ui.agePassed) {ui.ageAction = 'signin'; ui.modal = 'age'; render(); return;}
   void perform(signIn, 'You are signed in.');
 }
-function navigate(route: string, productId = ''): void {
-  if (route !== 'home' && !ui.agePassed) {ui.ageAction = 'browse'; ui.ageDestination = route; ui.ageProductId = productId; ui.modal = 'age'; render(); return;}
+function openAgeGate(destination: string): void {
+  ui.ageAction = 'browse'; ui.ageDestination = destination; ui.modal = 'age'; render();
+}
+function navigate(route: Route, productId = '', filters?: CatalogFilters): void {
+  const next = storefrontHash(route, productId, filters);
+  if (requiresAge(route) && !ui.agePassed) {openAgeGate(next); return;}
+  completeNavigation(next);
+}
+function completeNavigation(next: string): void {
   ui.modal = ''; ui.quantity = 1;
-  const next = route === 'product' ? `#/product/${encodeURIComponent(productId)}` : route === 'home' ? '#/' : `#/${route}`;
-  if (location.hash === next) {readRoute(); render();} else location.hash = next;
+  if (location.hash === next) {readRoute(); render(); document.getElementById('main-content')?.focus({preventScroll: true});}
+  else location.hash = next;
   window.scrollTo({top: 0, behavior: 'instant'});
 }
 function readRoute(): void {
-  const parts = location.hash.replace(/^#\/?/, '').split('/');
-  ui.route = ['explore', 'cart', 'orders', 'account', 'product'].includes(parts[0]) ? parts[0] : 'home';
-  try {ui.productId = ui.route === 'product' ? decodeURIComponent(parts[1] || '') : '';}
-  catch {ui.route = 'home'; ui.productId = '';}
-  document.title = `${({home: 'The collection', explore: 'Explore', cart: 'Your cart', orders: 'Your orders', account: 'Your account', product: productById(ui.productId)?.title || 'Product details'} as Record<string,string>)[ui.route]} — MZ Botanicals`;
+  const {route, productId, filters} = parseStorefrontHash(location.hash);
+  ui.route = route; ui.productId = productId; ui.category = filters.category; ui.search = filters.search;
+  document.title = `${({home: 'The collection', explore: 'Explore', cart: 'Your cart', orders: 'Your orders', account: 'Your account', merchants: 'For breeders & seed banks', product: ui.agePassed && productById(ui.productId)?.title || 'Product details'})[route]} — MZ Botanicals`;
+}
+function changeFilters(filters: CatalogFilters, replace = false): void {
+  const next = storefrontHash('explore', '', filters);
+  if (location.hash !== next) {
+    try { if (replace) history.replaceState(null, '', next); else history.pushState(null, '', next); }
+    catch { if (replace) location.replace(next); else location.hash = next; }
+  }
+  ui.category = filters.category; ui.search = filters.search;
+  render();
+}
+function closeModal(): void {
+  const leaveProtectedRoute = ui.modal === 'age' && !ui.agePassed && requiresAge(ui.route);
+  ui.modal = ''; ui.ageError = '';
+  if (leaveProtectedRoute) navigate('home'); else render();
+}
+function applyHash(): void {
+  const previousRoute = ui.route;
+  ui.modal = ''; readRoute();
+  if (!ui.agePassed && requiresAge(ui.route)) {openAgeGate(location.hash); return;}
+  render();
+  if (ui.route !== previousRoute) document.getElementById('main-content')?.focus({preventScroll: true});
 }
 
 function header(): string {
@@ -95,38 +127,93 @@ function bottomNav(): string {
 function footer(): string {
   const business = store.business;
   const support = business?.supportEmail && /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(business.supportEmail) ? `<a href="mailto:${html(business.supportEmail)}">Contact us</a>` : '';
-  return `<footer class="site-footer"><div><span class="footer-brand">MZ BOTANICALS</span><p>A collection worth exploring.</p></div><div class="footer-links">${externalLink(business?.privacyPolicyUrl, 'Privacy')}${externalLink(business?.termsUrl, 'Terms')}${externalLink(business?.refundPolicyUrl, 'Returns')}${support}<a href="#/account" data-route="account">Your account</a></div><span class="footer-note">For adults 18 and older.</span></footer>`;
+  return `<footer class="site-footer"><div><span class="footer-brand">MZ BOTANICALS</span><p>A collection worth exploring.</p></div><div class="footer-links">${externalLink(business?.privacyPolicyUrl, 'Privacy')}${externalLink(business?.termsUrl, 'Terms')}${externalLink(business?.refundPolicyUrl, 'Returns')}${support}<a href="#/account" data-route="account">Your account</a><a href="#/merchants" data-route="merchants" ${ui.route === 'merchants' ? 'aria-current="page"' : ''}>For breeders &amp; seed banks</a></div><span class="footer-note">For adults 18 and older.</span></footer>`;
 }
 function hero(): string {
-  return `<section class="hero"><div class="hero-copy"><span class="eyebrow light"><span class="tiny-line"></span> THE MZ BOTANICALS COLLECTION</span><h1>Good things<br/>start with<br/><em>great genetics.</em></h1><p>Explore the collection, get to know each variety, and find your next favorite.</p><div class="hero-actions"><button class="button cream" data-route="explore">Explore the collection ${icon('arrow')}</button><span class="hero-detail">Rooted in possibility.</span></div></div><div class="hero-art" aria-hidden="true"><img src="/brand/mz-welcome.png" alt=""/><span class="art-caption">MZ / BOTANICALS</span><span class="art-index">01</span></div></section>`;
+  return `<section class="hero"><div class="hero-copy"><span class="eyebrow light"><span class="tiny-line"></span> THE MZ BOTANICALS COLLECTION</span><h1>Good things<br/>start with<br/><em>great genetics.</em></h1><p>Explore the collection, get to know each variety, and find your next favorite.</p><div class="hero-actions"><a class="button cream" href="#/explore" data-route="explore">Explore the collection ${icon('arrow')}</a><span class="hero-detail">Rooted in possibility.</span></div></div><div class="hero-art" aria-hidden="true"><img src="/brand/mz-welcome.png" alt=""/><span class="art-caption">MZ / BOTANICALS</span><span class="art-index">01</span></div></section>`;
 }
 function home(): string {
   const arrivals = store.products.filter(product => product.isNew).slice(0,4);
   return `${hero()}<section class="intro-strip"><span>${icon('leaf')} Explore your varieties</span><span>${icon('bag')} Seed packs, clearly detailed</span><span>${icon('account')} Your collection, your account</span></section>
-    <section class="section"><div class="section-heading"><div><span class="eyebrow">FIND YOUR NEXT FAVORITE</span><h2>The collection</h2></div><button class="text-button" data-route="explore">Explore all ${icon('arrow')}</button></div><div class="category-grid">${[['Indica','A collection with character.','01'],['Sativa','A different perspective.','02'],['Hybrid','Explore the possibilities.','03']].map(([category,copy,index]) => `<button class="category-tile ${category.toLowerCase()}" data-category-entry="${category}"><span class="tile-index">${index}</span>${icon('leaf','category-leaf')}<span class="tile-bottom"><span><strong>${category}</strong><span>${copy}</span></span>${icon('arrow')}</span></button>`).join('')}</div></section>
+    <section class="section"><div class="section-heading"><div><span class="eyebrow">BROWSE BY CATEGORY</span><h2>The collection</h2></div><a class="text-button" href="#/explore" data-route="explore">Explore all ${icon('arrow')}</a></div><div class="category-grid">${[['Indica','Browse Indica varieties','01'],['Sativa','Browse Sativa varieties','02'],['Hybrid','Browse Hybrid varieties','03']].map(([category,copy,index]) => `<a class="category-tile ${category.toLowerCase()}" href="${storefrontHash('explore', '', {category: catalogCategory(category), search: ''})}" data-category-entry="${category}" aria-label="${copy}"><span class="tile-index">${index}</span>${icon('leaf','category-leaf')}<span class="tile-bottom"><span><strong>${category}</strong><span>${copy}</span></span>${icon('arrow')}</span></a>`).join('')}</div></section>
     ${ui.agePassed ? `<section class="section"><div class="section-heading"><div><span class="eyebrow">TAKE A CLOSER LOOK</span><h2>${arrivals.length ? 'New arrivals' : 'Available now'}</h2></div><button class="text-button" data-route="explore">View collection ${icon('arrow')}</button></div>${catalogContent(arrivals.length ? arrivals : store.products.slice(0,4))}</section>` : `<section class="welcome-note"><div class="seal">${icon('leaf')}</div><div><span class="eyebrow">A LITTLE MORE TO DISCOVER</span><h2>Make room for something new.</h2><p>Take a closer look at the varieties in our collection. Find pack details, availability, and a place to save your favorites.</p></div><button class="button" data-route="explore">Step inside ${icon('arrow')}</button></section>`}`;
 }
 function catalogContent(products: Product[]): string {
   if (store.loading && !store.products.length) return `<div class="loading-grid" aria-label="Loading products" aria-busy="true">${[1,2,3,4].map(() => '<div class="skeleton-card"><div></div><span></span><span></span></div>').join('')}</div>`;
-  if (!products.length) return emptyState('leaf', store.error ? 'The collection could not be loaded.' : 'A little space for something new.', store.error ? 'Please refresh the page or try again in a moment.' : ui.search || ui.category !== 'All' ? 'Try another search or explore a different category.' : 'There are no published products to show right now. Please check back soon.', store.error ? 'Refresh page' : '', store.error ? 'refresh' : '');
-  return `<div class="product-grid">${products.map(productCard).join('')}</div>`;
+  if (!products.length) {
+    const active = ui.search.trim() || ui.category !== 'All';
+    return emptyState('leaf', store.error ? 'The collection could not be loaded.' : active ? 'No matching varieties.' : 'No varieties are listed right now.', store.error ? 'Please refresh the page or try again in a moment.' : active ? 'Try another name or clear your filters to see the full collection.' : 'Please check back soon.', store.error ? 'Refresh page' : '', store.error ? 'refresh' : '');
+  }
+  return `<div class="product-grid">${products.map(product => productCard(product)).join('')}</div>`;
 }
 function productPhoto(product: Product, className = ''): string {
   const url = imageUrl(product.thumbnail);
-  return `<div class="product-photo ${className}"><span class="photo-fallback">${icon('leaf')}</span>${url ? `<img src="${html(url)}" alt="${html(product.title)}" loading="lazy" referrerpolicy="no-referrer"/>` : ''}</div>`;
+  return `<div class="product-photo ${className}"><span class="photo-fallback">${icon('leaf')}<span>Photo not shown</span></span>${url ? `<img src="${html(url)}" alt="${html(product.title)}" loading="lazy" decoding="async" referrerpolicy="no-referrer"/>` : ''}</div>`;
 }
-function productCard(product: Product): string {
-  return `<article class="product-card"><button class="product-open" data-product="${html(product.id)}" aria-label="View ${html(product.title)}">${productPhoto(product)}${product.isNew ? '<span class="product-badge">New arrival</span>' : ''}<span class="product-card-body"><span class="eyebrow">${html(product.category || 'Collection')}</span><h3>${html(product.title)}</h3><span class="product-meta">${product.packSize ? `${product.packSize} seeds per pack` : 'See pack details'}<span>${product.stockQuantity > 0 ? 'In stock' : 'Out of stock'}</span></span><span class="product-card-end"><strong>${money(product.priceCents)}</strong><span class="round-arrow">${icon('arrow')}</span></span></span></button></article>`;
+const packLabel = (product: Product) => product.packSize === null ? 'Pack size not listed' : `${product.packSize} ${product.packSize === 1 ? 'seed' : 'seeds'} per pack`;
+const stockLabel = (product: Product) => product.stockQuantity > 0 ? 'In stock' : 'Out of stock';
+const cardPrice = (product: Product) => money(product.priceCents);
+function productCard(product: Product, sample = false): string {
+  const href = storefrontHash('product', product.id, {category: ui.category, search: ui.search});
+  const content = `${productPhoto(product)}${product.isNew ? '<span class="product-badge">New arrival</span>' : ''}<div class="product-card-body"><span class="eyebrow">${html(product.category || 'Collection')}</span><h3>${html(product.title)}</h3><div class="product-meta"><span>${packLabel(product)}</span><span class="card-stock ${product.stockQuantity ? '' : 'card-stock-empty'}">${stockLabel(product)}</span></div><div class="product-card-end"><strong>${cardPrice(product)}</strong>${sample ? '' : `<span class="round-arrow">${icon('arrow')}</span>`}</div></div>`;
+  return `<article class="product-card">${sample ? `<div class="product-open">${content}</div>` : `<a class="product-open" href="${html(href)}" data-product="${html(product.id)}" aria-label="View ${html(product.title)}">${content}</a>`}</article>`;
 }
 function explore(): string {
-  const filtered = store.products.filter(product => (ui.category === 'All' || product.category.toLowerCase() === ui.category.toLowerCase()) && `${product.title} ${product.category} ${product.description}`.toLowerCase().includes(ui.search.toLowerCase()));
-  return `<section class="page-heading"><span class="eyebrow">THE MZ BOTANICALS COLLECTION</span><h1>Find your next favorite.</h1><p>A closer look at every variety, one pack at a time.</p></section><section class="section catalog-section"><div class="catalog-tools"><div class="filters" role="group" aria-label="Filter by category">${['All','Indica','Sativa','Hybrid'].map(category => `<button data-filter="${category}" class="filter ${ui.category === category ? 'selected' : ''}" aria-pressed="${ui.category === category}">${category}</button>`).join('')}</div><label class="search-box" for="product-search">${icon('search')}<span class="sr-only">Search the collection</span><input id="product-search" type="search" placeholder="Search varieties…" value="${html(ui.search)}" autocomplete="off"/></label></div><div class="results-line"><span>${filtered.length} ${filtered.length === 1 ? 'variety' : 'varieties'}</span>${ui.search || ui.category !== 'All' ? '<button class="text-button" data-action="clear-filters">Clear filters</button>' : '<span>Discover the details.</span>'}</div>${catalogContent(filtered)}</section>`;
+  const needle = ui.search.trim().toLowerCase();
+  const filtered = store.products.filter(product => (ui.category === 'All' || product.category.trim().toLowerCase() === ui.category.toLowerCase()) && `${product.title} ${product.category} ${product.description}`.toLowerCase().includes(needle));
+  const results = store.loading && !store.products.length ? 'Loading varieties…' : store.error && !store.products.length ? 'Varieties could not be loaded.' : `${filtered.length} ${filtered.length === 1 ? 'variety' : 'varieties'}`;
+  return `<section class="page-heading"><span class="eyebrow">THE MZ BOTANICALS COLLECTION</span><h1>Explore the seed collection.</h1><p>Compare varieties, pack sizes and availability.</p></section><section class="section catalog-section" aria-label="Varieties"><div class="catalog-tools"><div class="filters" role="group" aria-label="Filter by category">${catalogCategories.map(category => `<button id="filter-${category.toLowerCase()}" data-filter="${category}" class="filter ${ui.category === category ? 'selected' : ''}" aria-pressed="${ui.category === category}">${category}</button>`).join('')}</div><label class="search-box" for="product-search">${icon('search')}<span class="sr-only">Search the collection</span><input id="product-search" type="search" maxlength="100" placeholder="Search varieties…" value="${html(ui.search)}" autocomplete="off"/></label></div><div class="results-line"><span role="status" aria-live="polite">${results}</span>${needle || ui.category !== 'All' ? '<button class="text-button" data-action="clear-filters">Clear filters</button>' : ''}</div>${catalogContent(filtered)}</section>`;
 }
 function details(): string {
   const product = productById(ui.productId);
-  if (!product) return `<section class="section">${emptyState('leaf', store.loading ? 'Opening this variety…' : 'This variety is unavailable.', 'Explore the collection to see what is currently available.', 'Back to collection', 'explore')}</section>`;
+  const back = storefrontHash('explore', '', {category: ui.category, search: ui.search});
+  const breadcrumb = `<a class="text-button breadcrumb" href="${html(back)}" data-action="return-to-catalog">${icon('back')} Back to collection</a>`;
+  if (!product) return `<section class="section">${breadcrumb}${emptyState('leaf', store.loading ? 'Opening this variety…' : 'This variety is unavailable.', 'Explore the collection to see what is currently available.')}</section>`;
   const max = Math.max(1,Math.min(10,product.stockQuantity)); ui.quantity = Math.min(max, Math.max(1, ui.quantity));
-  return `<section class="section detail-section"><button class="text-button breadcrumb" data-route="explore">${icon('back')} Back to collection</button><div class="product-detail"><button class="detail-image" data-action="image" aria-label="Enlarge ${html(product.title)} image">${productPhoto(product)}<span class="image-hint">Take a closer look ${icon('plus')}</span></button><div class="detail-copy"><span class="eyebrow">${html(product.category || 'MZ Botanicals collection')}</span><h1>${html(product.title)}</h1><div class="availability"><span class="availability-dot ${product.stockQuantity ? '' : 'soldout'}"></span>${product.stockQuantity ? 'In stock' : 'Currently out of stock'}${product.isNew ? '<span class="pill">New arrival</span>' : ''}</div><p class="description">${html(product.description)}</p><div class="selection-card"><span class="eyebrow">MAKE IT YOURS</span><div class="pack-row"><div><span class="field-label">Pack size</span><strong>${product.packSize ? `${product.packSize} seeds` : 'Not specified'}</strong></div><div><span class="field-label">Price per pack</span><strong>${money(product.priceCents)}</strong></div></div><div class="purchase-row"><label class="quantity-field" for="product-quantity"><span class="field-label">Quantity · packs</span><input id="product-quantity" type="number" min="1" max="${max}" value="${ui.quantity}" inputmode="numeric" ${disabled(!product.stockQuantity || locked())}/></label><div class="selection-total"><span class="field-label">Item subtotal</span><strong>${money(product.priceCents * ui.quantity)}</strong></div></div><button class="button wide" data-action="add-to-cart" ${disabled(!product.stockQuantity || !product.packSize || locked())}>${icon('bag')}${store.user ? 'Add to cart' : 'Sign in to add to cart'}<span>${money(product.priceCents * ui.quantity)}</span></button><p class="fine-print">Online checkout is currently unavailable. You can save your selection to your cart.</p></div></div></div></section>`;
+  const canSave = !!product.stockQuantity && product.packSize !== null;
+  const image = imageUrl(product.thumbnail) ? `<button class="detail-image" data-action="image" aria-label="Enlarge ${html(product.title)} image">${productPhoto(product)}<span class="image-hint">Take a closer look ${icon('plus')}</span></button>` : `<div class="detail-image">${productPhoto(product)}</div>`;
+  return `<section class="section detail-section">${breadcrumb}<div class="product-detail">${image}<div class="detail-copy"><span class="eyebrow">${html(product.category || 'MZ Botanicals collection')}</span><h1>${html(product.title)}</h1><div class="selection-card product-facts" aria-label="Pack details"><h2>Pack details</h2><dl class="pack-row"><div><dt>Pack size</dt><dd>${packLabel(product)}</dd></div><div><dt>Availability</dt><dd>${stockLabel(product)}</dd></div><div><dt>Price per pack</dt><dd>${cardPrice(product)}</dd></div></dl><div class="checkout-notice product-checkout">${icon('lock')}<div><strong>Online checkout is unavailable.</strong><p>${canSave ? 'You can save this pack to your cart. Saving does not place an order.' : 'This pack cannot be saved to your cart right now.'}</p></div></div>${canSave ? `<div class="purchase-row"><label class="quantity-field" for="product-quantity"><span class="field-label">Quantity · packs</span><input id="product-quantity" type="number" min="1" max="${max}" value="${ui.quantity}" inputmode="numeric" ${disabled(locked())}/></label><div class="selection-total"><span class="field-label">Selection subtotal</span><strong>${money(product.priceCents * ui.quantity)}</strong></div></div><button class="button wide" data-action="add-to-cart" ${disabled(locked())}>${icon('bag')}${store.user ? 'Save to cart' : 'Sign in to save to cart'}</button>` : ''}</div>${product.description.trim() ? `<p class="description">${html(product.description)}</p>` : ''}${product.provenance ? `<section class="product-provenance"><h2>About this breeder</h2>${externalLink(product.provenance.url, product.provenance.name)}</section>` : ''}</div></div></section>`;
+}
+function merchantPage(): string {
+  return `<section class="merchant-hero">
+    <div class="merchant-intro"><span class="eyebrow">FOR BREEDERS &amp; SEED BANKS</span>
+    <h1>A branded storefront for your seed catalog.</h1>
+    <p>Show shoppers your varieties, pack details and availability. Decide which listings appear in your storefront.</p>
+    <button type="button" id="see-demo" class="button" data-action="see-demo" aria-controls="merchant-demo" aria-expanded="${demoOpen}">See the demo ${icon('arrow')}</button></div>
+    <aside class="merchant-side" aria-label="What the demo covers"><span class="eyebrow light"><span class="tiny-line"></span> FROM DRAFT TO STOREFRONT</span>
+      <ol><li><span aria-hidden="true">01</span>Edit a listing</li><li><span aria-hidden="true">02</span>Publish to the test catalog</li><li><span aria-hidden="true">03</span>See it as a shopper</li></ol>
+      <p>Sample data only. The demo does not take orders or payments or change the live catalog.</p></aside>
+    </section>
+    <section class="section merchant-demo" id="merchant-demo" ${demoOpen ? '' : 'hidden'} aria-labelledby="demo-heading">
+      <span class="eyebrow">INTERACTIVE TEST CATALOG</span>
+      <h2 id="demo-heading" tabindex="-1">Publish a sample listing.</h2>
+      <p>Change the sample details and publish to see what a shopper would see. Changes reset when you reload.</p>
+      <div class="merchant-demo-grid">
+        <section class="demo-panel" aria-labelledby="demo-editor-heading"><span class="eyebrow">01 / OPERATOR VIEW</span><h3 id="demo-editor-heading">Listing editor</h3>
+          <form id="merchant-demo-form" autocomplete="off">
+            <label class="form-field" for="demo-title"><span>Listing name</span><input id="demo-title" name="title" value="${html(demoDraft.title)}" required maxlength="80"/></label>
+            <div class="form-field"><label for="demo-category">Category</label><select id="demo-category" name="category">${catalogCategories.filter(category => category !== 'All').map(category => `<option ${demoDraft.category === category ? 'selected' : ''}>${category}</option>`).join('')}</select></div>
+            <div class="demo-form-numbers">${([['pack','Seeds per pack','1','10000','1'],['stock','Packs in stock','0','9999','1'],['price','Price per pack ($)','0.01','999.99','0.01']] as const).map(([key,label,min,max,step]) => `<label class="form-field" for="demo-${key}"><span>${label}</span><input id="demo-${key}" name="${key}" type="number" min="${min}" max="${max}" step="${step}" required value="${html(demoDraft[key])}"/></label>`).join('')}</div>
+            <div class="demo-actions"><button class="button" id="demo-publish" type="submit">Publish demo listing ${icon('arrow')}</button><button type="button" id="demo-reset" class="text-button" data-action="reset-demo">Reset demo</button></div>
+          </form>
+          <p class="demo-status" role="status">${html(demoMessage)}</p>
+        </section>
+        <section class="demo-panel demo-preview" aria-labelledby="demo-preview-heading"><span class="eyebrow">02 / SHOPPER VIEW</span><h3 id="demo-preview-heading">Storefront preview</h3>
+          ${demoListing ? productCard(demoListing, true) : `<div class="demo-empty">${icon('leaf')}<p>No published listing yet. Publish the sample to see its shopper card here.</p></div>`}
+          <p class="fine-print">Demo only. Checkout and cart saving are disabled here.</p>
+        </section>
+      </div>
+    </section>`;
+}
+function publishDemoListing(form: HTMLFormElement): void {
+  const fields = new FormData(form);
+  for (const key of Object.keys(demoDefaults) as Array<keyof typeof demoDefaults>) demoDraft[key] = String(fields.get(key) ?? '');
+  const title = demoDraft.title.trim();
+  if (!title) {demoMessage = 'Enter a listing name before publishing.'; render(); document.getElementById('demo-title')?.focus(); return;}
+  const listing = normalizeProduct('merchant-demo-listing', {title, category: demoDraft.category,
+    amountOfSeeds: Number(demoDraft.pack), stockQuantity: Number(demoDraft.stock), price: Number(demoDraft.price), isPublished: true});
+  if (!listing?.packSize) {demoMessage = 'Check the pack size, stock and price before publishing.'; render(); return;}
+  demoListing = listing; demoMessage = `${listing.title} is published in the test catalog only.`; render();
 }
 function emptyState(glyph: string, title: string, text: string, button = '', action = ''): string {
   return `<div class="empty-state"><span class="empty-icon">${icon(glyph)}</span><h2>${html(title)}</h2><p>${html(text)}</p>${button ? `<button class="button" ${['signin','refresh'].includes(action) ? `data-action="${action}"` : `data-route="${action}"`}>${html(button)} ${icon('arrow')}</button>` : ''}</div>`;
@@ -144,7 +231,7 @@ function cart(): string {
     const product = productById(line.productId), selectionMatches = cartSelectionMatches(line,product);
     const max = Math.min(10,product?.stockQuantity ?? 0);
     return `<article class="cart-item">${product ? `<button class="cart-image" data-product="${html(product.id)}" aria-label="View ${html(product.title)}">${productPhoto(product)}</button>` : `<div class="cart-image unavailable-photo">${icon('leaf')}</div>`}<div class="cart-item-copy"><span class="eyebrow">${html(product?.category || 'Unavailable item')}</span><h2>${html(product?.title || 'This product is no longer available')}</h2><p>${line.amountOfSeeds ? `${line.amountOfSeeds} seeds per pack` : 'Pack details unavailable'}</p><div class="cart-controls"><div class="stepper" aria-label="Quantity"><button data-cart-id="${html(line.id)}" data-cart-quantity="${Math.max(0,line.quantity-1)}" aria-label="Remove one pack" ${disabled(!selectionMatches)}>${icon('minus')}</button><span aria-label="${line.quantity} packs">${line.quantity}</span><button data-cart-id="${html(line.id)}" data-cart-quantity="${line.quantity+1}" aria-label="Add one pack" ${disabled(!selectionMatches || line.quantity >= max)}>${icon('plus')}</button></div><button class="text-button remove" data-cart-id="${html(line.id)}" data-cart-quantity="0" ${disabled()}>Remove</button></div>${product && !selectionMatches ? '<p class="inline-error">Pack size changed or is unavailable. Remove this selection and choose a current pack from the collection.</p>' : selectionMatches && line.quantity > product.stockQuantity ? '<p class="inline-error">Availability changed. Please reduce the quantity.</p>' : ''}</div><strong class="cart-line-total">${selectionMatches ? money(product.priceCents*line.quantity) : '—'}</strong></article>`;
-  }).join('')}</div><aside class="cart-summary"><span class="eyebrow">A LITTLE CLOSER</span><h2>Your selection</h2><dl><div><dt>Item subtotal</dt><dd>${hasChangedSelection ? 'Review changed or unavailable items' : money(subtotal)}</dd></div><div><dt>Shipping &amp; tax</dt><dd>Not calculated</dd></div></dl><div class="checkout-notice">${icon('lock')}<div><strong>Checkout is being prepared.</strong><p>Your cart is saved. Online purchases are currently unavailable.</p></div></div><button class="button wide" disabled>Checkout unavailable</button><button class="text-button" data-route="explore">Continue exploring ${icon('arrow')}</button></aside>` : `<div class="cart-empty">${emptyState('bag','Something good belongs here.','Explore the collection and add your favorite packs to your cart.','Explore the collection','explore')}</div>`}</section>`;
+  }).join('')}</div><aside class="cart-summary"><span class="eyebrow">A LITTLE CLOSER</span><h2>Your selection</h2><dl><div><dt>Item subtotal</dt><dd>${hasChangedSelection ? 'Review changed or unavailable items' : money(subtotal)}</dd></div><div><dt>Shipping &amp; tax</dt><dd>Not calculated</dd></div></dl><div class="checkout-notice">${icon('lock')}<div><strong>Online checkout is unavailable.</strong><p>Your cart is saved. No order has been placed.</p></div></div><button class="button wide" disabled>Checkout unavailable</button><button class="text-button" data-route="explore">Continue exploring ${icon('arrow')}</button></aside>` : `<div class="cart-empty">${emptyState('bag','Something good belongs here.','Explore the collection and save your favorite packs to your cart.','Explore the collection','explore')}</div>`}</section>`;
 }
 function orderCard(order: StoreOrder): string {
   const date = order.createdAt ? new Intl.DateTimeFormat('en-US',{dateStyle:'medium'}).format(new Date(order.createdAt)) : 'Date unavailable';
@@ -168,7 +255,7 @@ function account(): string {
 function modal(): string {
   if (!ui.modal) return '';
   let contents = '';
-  if (ui.modal === 'menu') contents = `<span class="eyebrow">YOUR WAY AROUND</span><h2 id="modal-title">Explore MZ Botanicals</h2><nav class="drawer-nav" aria-label="All pages">${[['home','Home'],['explore','Explore the collection'],['cart','Your cart'],['orders','Your orders'],['account','Your account']].map(([route,label])=>`<button data-route="${route}">${label} ${icon('arrow')}</button>`).join('')}</nav>`;
+  if (ui.modal === 'menu') contents = `<span class="eyebrow">YOUR WAY AROUND</span><h2 id="modal-title">Explore MZ Botanicals</h2><nav class="drawer-nav" aria-label="All pages">${[['home','Home'],['explore','Explore the collection'],['cart','Your cart'],['orders','Your orders'],['account','Your account'],['merchants','For breeders &amp; seed banks']].map(([route,label])=>`<button data-route="${route}">${label} ${icon('arrow')}</button>`).join('')}</nav>`;
   if (ui.modal === 'delete') contents = `<span class="eyebrow">ACCOUNT &amp; PRIVACY</span><h2 id="modal-title">Request account deletion?</h2><p>This sends an account and data deletion request to the store for review. It does not immediately delete your account, cancel orders, or issue refunds.</p><p>Some records may be retained under the store’s approved policy.</p><div class="dialog-actions"><button class="button secondary" data-action="close-modal">Keep account</button><button class="button danger-button" data-action="confirm-deletion" ${disabled()}>Send deletion request</button></div>`;
   if (ui.modal === 'age') contents = `<span class="eyebrow">BEFORE YOU STEP INSIDE</span><h2 id="modal-title">${ui.ageDenied ? 'Access restricted.' : 'Welcome to the collection.'}</h2><p>${ui.ageDenied ? 'You must be 18 or older to access MZ Botanicals. Sign-in is unavailable on this browser until you turn 18.' : 'You must be at least 18 to continue. Please enter your date of birth.'}</p>${!ui.ageDenied ? `<form id="age-form"><label class="form-field" for="birth-date"><span>Date of birth</span><input id="birth-date" name="birthDate" type="date" value="${html(ui.birthDate)}" min="1900-01-01" max="${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}" required autocomplete="bday"/></label>${ui.ageError ? `<p class="inline-error" role="alert">${html(ui.ageError)}</p>` : ''}<button type="submit" class="button wide">Verify age &amp; continue ${icon('arrow')}</button><p class="fine-print">Your birth date is not sent to the store during this check.</p></form>` : ''}`;
   if (ui.modal === 'image') {const product = productById(ui.productId); contents = product ? `<h2 id="modal-title" class="sr-only">${html(product.title)} image</h2>${productPhoto(product,'enlarged')}` : '';}
@@ -177,41 +264,46 @@ function modal(): string {
 function render(): void {
   const active = document.activeElement as HTMLInputElement | null;
   const focusId = active?.id, selection = active?.selectionStart, selectionEnd = active?.selectionEnd;
-  const visibleRoute = !ui.agePassed && ui.route !== 'home' ? 'home' : ui.route;
-  const content = ({home, explore, product: details, cart, orders, account} as Record<string,()=>string>)[visibleRoute]();
-  app.innerHTML = `${header()}${ui.offline ? '<div class="connection-bar" role="status">You are offline. Connect to save changes.</div>' : ''}${store.error ? `<div class="error-bar" role="alert">${html(store.error)}<button class="text-button" data-action="refresh">Refresh page</button></div>` : ''}<main id="main-content" tabindex="-1">${content}</main>${footer()}${bottomNav()}${ui.toast ? `<div class="toast ${ui.toastError ? 'error' : ''}" role="${ui.toastError ? 'alert' : 'status'}">${icon(ui.toastError ? 'close' : 'check')}<span>${html(ui.toast)}</span><button class="icon-button" data-action="close-toast" aria-label="Dismiss notification">${icon('close')}</button></div>` : ''}${modal()}`;
+  const visibleRoute = !ui.agePassed && requiresAge(ui.route) ? 'home' : ui.route;
+  const content = ({home, explore, product: details, cart, orders, account, merchants: merchantPage})[visibleRoute]();
+  app.innerHTML = `${header()}${__MZ_REVIEW_BUILD__ ? '<div class="connection-bar review-banner">Review preview · Sample catalog and simulated accounts. No live connection.</div>' : ''}${ui.offline && visibleRoute !== 'merchants' ? '<div class="connection-bar" role="status">You are offline. Connect to save changes.</div>' : ''}${store.error && visibleRoute !== 'merchants' ? `<div class="error-bar" role="alert">${html(store.error)}<button class="text-button" data-action="refresh">Refresh page</button></div>` : ''}<main id="main-content" tabindex="-1">${content}</main>${footer()}${bottomNav()}${ui.toast ? `<div class="toast ${ui.toastError ? 'error' : ''}" role="${ui.toastError ? 'alert' : 'status'}">${icon(ui.toastError ? 'close' : 'check')}<span>${html(ui.toast)}</span><button class="icon-button" data-action="close-toast" aria-label="Dismiss notification">${icon('close')}</button></div>` : ''}${modal()}`;
   app.querySelectorAll('img').forEach(image => image.addEventListener('error', () => image.classList.add('image-failed'), {once:true}));
   const dialog = document.querySelector<HTMLDialogElement>('#store-dialog');
-  if (dialog) {dialog.showModal(); dialog.addEventListener('cancel', event => {event.preventDefault(); ui.modal = ''; render();});}
+  if (dialog) {dialog.showModal(); dialog.addEventListener('cancel', event => {event.preventDefault(); closeModal();});}
   if (focusId) {const next = document.getElementById(focusId) as HTMLInputElement | null; if (next) {next.focus({preventScroll:true}); try {if (selection !== null && selection !== undefined) next.setSelectionRange(selection,selectionEnd ?? selection);} catch { /* Date/number inputs do not support text selection. */ }}}
 }
 
 app.addEventListener('click', event => {
   const target = (event.target as Element).closest<HTMLElement>('button,a'); if (!target) return;
   if (target instanceof HTMLButtonElement && target.disabled) return;
-  if (target.dataset.route) {event.preventDefault(); navigate(target.dataset.route); return;}
-  if (target.dataset.product) {event.preventDefault(); if (!ui.agePassed) {ui.ageAction = 'browse'; ui.modal = 'age'; render();} else navigate('product', target.dataset.product); return;}
-  if (target.dataset.categoryEntry) {ui.category = target.dataset.categoryEntry; ui.search = ''; navigate('explore'); return;}
-  if (target.dataset.filter) {ui.category = target.dataset.filter; render(); return;}
+  if (target instanceof HTMLAnchorElement && (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)) return;
+  if (target.dataset.route) {event.preventDefault(); navigate(target.dataset.route as Route); return;}
+  if (target.dataset.product) {event.preventDefault(); navigate('product', target.dataset.product, {category: ui.category, search: ui.search}); return;}
+  if (target.dataset.categoryEntry) {event.preventDefault(); navigate('explore', '', {category: catalogCategory(target.dataset.categoryEntry), search: ''}); return;}
+  if (target.dataset.filter) {changeFilters({category: catalogCategory(target.dataset.filter), search: ui.search}); return;}
   if (target.dataset.cartId) {const quantity = Number(target.dataset.cartQuantity); void perform(()=>setCartQuantity(target.dataset.cartId!, quantity), quantity === 0 ? 'Item removed from your cart.' : 'Cart updated.'); return;}
   switch (target.dataset.action) {
     case 'signin': beginSignIn(); break;
     case 'signout': void perform(async()=>{await signOut(); ui.profileDirty = false; navigate('home');},'You are signed out.'); break;
     case 'refresh': location.reload(); break;
     case 'menu': ui.modal = 'menu'; render(); break;
-    case 'close-modal': ui.modal = ''; ui.ageError = ''; render(); break;
+    case 'close-modal': closeModal(); break;
     case 'close-toast': ui.toast = ''; render(); break;
-    case 'clear-filters': ui.search = ''; ui.category = 'All'; render(); break;
+    case 'clear-filters': changeFilters({category: 'All', search: ''}); document.getElementById('product-search')?.focus({preventScroll: true}); break;
+    case 'return-to-catalog': event.preventDefault(); navigate('explore', '', {category: ui.category, search: ui.search}); break;
+    case 'see-demo': demoOpen = true; render(); document.getElementById('demo-heading')?.focus(); break;
+    case 'reset-demo': demoDraft = {...demoDefaults}; demoListing = null; demoMessage = 'The test catalog has been reset.'; render(); break;
     case 'image': ui.modal = 'image'; render(); break;
     case 'delete-dialog': ui.modal = 'delete'; render(); break;
     case 'confirm-deletion': void perform(async()=>{await requestAccountDeletion(); ui.modal = '';},'Your deletion request has been recorded for review.'); break;
-    case 'add-to-cart': if (!store.user) beginSignIn(); else void perform(()=>addToCart(ui.productId,ui.quantity),'Added to your cart.'); break;
+    case 'add-to-cart': if (!store.user) beginSignIn(); else void perform(()=>addToCart(ui.productId,ui.quantity),'Saved to your cart. No order was placed.'); break;
   }
 });
 app.addEventListener('input', event => {
   const input = event.target as HTMLInputElement;
   if (input.id === 'birth-date') ui.birthDate = input.value;
-  if (input.id === 'product-search') {ui.search = input.value; render();}
+  if (input.id === 'product-search') changeFilters({category: ui.category, search: cleanSearch(input.value)}, true);
+  if (input.form?.id === 'merchant-demo-form' && Object.hasOwn(demoDefaults, input.name)) demoDraft[input.name as keyof typeof demoDefaults] = input.value;
   if (input.id === 'product-quantity') {const product = productById(ui.productId); ui.quantity = Math.min(Math.max(1,Number(input.value)||1), Math.min(10,product?.stockQuantity||1)); render();}
   if (input.form?.id === 'profile-form') {ui.profileDraft[input.name as keyof ProfileUpdate] = input.value; ui.profileDirty = true;}
 });
@@ -222,17 +314,25 @@ app.addEventListener('submit', event => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate) || birthDate > String(form.querySelector<HTMLInputElement>('input')?.max)) {ui.ageError = 'Enter a valid birth date in the past.'; render(); return;}
     if (!adultDate(birthDate)) {storageSet('mz-web-age-denied',birthDate); ui.ageDenied = true; render(); return;}
     ui.agePassed = true; ui.ageError = ''; storageSet('mz-web-age-verified','yes',true); ui.modal = '';
-    if (ui.ageAction === 'signin') beginSignIn(); else navigate(ui.ageDestination,ui.ageProductId);
+    if (ui.ageAction === 'signin') beginSignIn(); else completeNavigation(ui.ageDestination);
   }
+  if (form.id === 'merchant-demo-form') publishDemoListing(form);
   if (form.id === 'profile-form') {
     const fields = Object.fromEntries(new FormData(form)) as unknown as ProfileUpdate;
     void perform(async()=>{await updateProfile(fields); ui.profileDirty = false;},'Your profile has been saved.');
   }
 });
-window.addEventListener('hashchange',()=>{ui.modal = ''; readRoute(); render();});
+window.addEventListener('hashchange',applyHash);
+window.addEventListener('popstate', () => {
+  const next = parseStorefrontHash(location.hash);
+  if (next.route === 'explore' && ui.route === 'explore' && (next.filters.category !== ui.category || next.filters.search !== ui.search)) applyHash();
+});
 window.addEventListener('online',()=>{ui.offline = false; render();});
 window.addEventListener('offline',()=>{ui.offline = true; render();});
-readRoute();
+document.querySelector('.skip-link')?.addEventListener('click', event => {
+  event.preventDefault(); document.getElementById('main-content')?.focus();
+});
+applyHash();
 subscribeStore(next => {
   const changedUser = (next.user?.uid || '') !== ui.profileUid;
   store = next;
