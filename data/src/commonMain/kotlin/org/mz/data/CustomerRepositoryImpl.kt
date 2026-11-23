@@ -121,13 +121,21 @@ class CustomerRepositoryImpl : CustomerRepository {
         }
 
     override suspend fun signOut(): RequestState<Unit> = try {
+        db.auth.stopAutoRefreshForCurrentSession()
         db.auth.signOut()
         RequestState.Success(Unit)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
-        // The local session is cleared even if the network call fails.
-        RequestState.Success(Unit)
+        // Supabase may fail before clearing local state, e.g. when offline.
+        try {
+            db.auth.clearSession()
+            RequestState.Success(Unit)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Exception) {
+            RequestState.Error("Could not sign out on this device. Please try again.")
+        }
     }
 
     private suspend fun changeCart(productId: String?, lineId: String?, quantity: Int) {

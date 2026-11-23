@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
 
         super.onCreate(savedInstanceState)
         setContent {
-            App() // ✅ Your composable app entry
+            App(keepSignedIn = true)
         }
     }
 }

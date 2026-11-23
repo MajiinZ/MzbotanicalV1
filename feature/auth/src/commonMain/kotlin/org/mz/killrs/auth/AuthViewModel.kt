@@ -13,6 +13,21 @@ class AuthViewModel(
     private val customerRepository: CustomerRepository,
 ) : ViewModel() {
 
+    internal suspend fun sendResetCode(email: String): String? {
+        validateResetEmail(email)?.let { return it }
+        return authRepository.requestPasswordReset(email).exceptionOrNull()?.let {
+            "Could not send a reset email. Check your connection or wait a minute before trying again."
+        }
+    }
+
+    internal suspend fun completePasswordReset(email: String, code: String, password: String, confirm: String): String? {
+        validateResetEmail(email)?.let { return it }
+        validateResetFields(code.trim(), password, confirm)?.let { return it }
+        return authRepository.resetPassword(email, code.trim(), password).exceptionOrNull()?.let {
+            if (it is IllegalStateException && it.message?.startsWith("Password change not confirmed.") == true) it.message
+            else "That link or code could not be verified. Check it or request a new reset email."
+        }
+    }
     /** [idToken] comes from Google Sign-In on Android; null opens the browser flow (desktop). */
     fun signInWithGoogle(idToken: String?, onSuccess: () -> Unit, onError: (String) -> Unit) = run(onSuccess, onError) {
         if (idToken != null) authRepository.signInWithGoogleIdToken(idToken) else authRepository.signInWithGoogleBrowser()

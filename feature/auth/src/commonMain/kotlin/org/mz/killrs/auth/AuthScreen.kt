@@ -48,12 +48,13 @@ import rememberMessageBarState
 @Composable
 fun AuthenticationScreen(
     navigateToHome: () -> Unit,
-    ///navigateToManageProduct: () -> Unit,
+    ageAlreadyVerified: Boolean = false,
+    enablePasswordReset: Boolean = false,
 ) {
 
     val ageStore = rememberAgeVerificationStore()
     var ageVerified by rememberSaveable { mutableStateOf(false) }
-    if (!ageVerified) {
+    if (!ageAlreadyVerified && !ageVerified) {
         AgeVerificationScreen(store = ageStore, onVerified = { ageVerified = true })
         return
     }
@@ -142,6 +143,10 @@ fun AuthenticationScreen(
                     EmailPasswordForm(
                         loading = loadingState,
                         textColor = brandCream,
+                        passwordReset = viewModel.takeIf { enablePasswordReset },
+                        onPasswordReset = {
+                            messageBarState.addSuccess("Password changed. Sign in with your new password.")
+                        },
                         onSignIn = { email, password ->
                             loadingState = true
                             viewModel.signInWithEmail(email, password, onSignedIn, onAuthError)

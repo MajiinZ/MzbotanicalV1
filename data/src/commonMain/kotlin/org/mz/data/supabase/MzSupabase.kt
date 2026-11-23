@@ -2,6 +2,7 @@ package org.mz.data.supabase
 
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.auth.Auth
+import io.github.jan.supabase.auth.SessionManager
 import io.github.jan.supabase.auth.auth
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.exceptions.RestException
@@ -24,9 +25,16 @@ object SupabaseConfig {
 
 /** One shared client for the whole app (Android and desktop). */
 object MzSupabase {
+    private var sessionStore: SessionManager? = null
+
+    // Called by Android Application before Koin or any screen accesses the client.
+    fun configureSessionStorage(store: SessionManager) {
+        sessionStore = store
+    }
+
     val client: SupabaseClient by lazy {
         createSupabaseClient(supabaseUrl = SupabaseConfig.URL, supabaseKey = SupabaseConfig.PUBLISHABLE_KEY) {
-            install(Auth)
+            install(Auth) { sessionManager = sessionStore }
             install(Postgrest)
             install(Storage)
         }

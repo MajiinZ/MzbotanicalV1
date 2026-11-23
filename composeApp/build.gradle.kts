@@ -64,6 +64,7 @@ kotlin {
                 implementation(libs.koin.compose)
 
                 implementation(project(path = ":navigation"))
+                implementation(project(path = ":feature:auth"))
                 implementation(project(path = ":shared"))
                 implementation(project(path = ":di"))
                 implementation(project(path = ":data"))

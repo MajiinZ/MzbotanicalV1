@@ -18,6 +18,15 @@ import org.mz.killrs.shared.component.CustomTextField
 import org.mz.killrs.shared.component.PrimaryButton
 
 @Composable
+fun AgeVerificationGate(content: @Composable () -> Unit) {
+    val store = rememberAgeVerificationStore()
+    var verified by rememberSaveable { mutableStateOf(false) }
+    val denied = store.deniedBirthDate()?.let { !it.isAdult(currentAgeCheckDate()) } == true
+    if (verified && !denied) content()
+    else AgeVerificationScreen(store = store, onVerified = { verified = true })
+}
+
+@Composable
 internal fun AgeVerificationScreen(store: AgeVerificationStore, onVerified: () -> Unit) {
     var month by rememberSaveable { mutableStateOf("") }
     var day by rememberSaveable { mutableStateOf("") }
