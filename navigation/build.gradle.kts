@@ -37,7 +37,8 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodel)
             implementation(libs.androidx.lifecycle.runtime.compose)
             implementation(libs.kotlinx.serialization)
-            implementation(libs.compose.navigation)
+            implementation(libs.navigation3.ui)
+            implementation(libs.androidx.lifecycle.viewmodel.navigation3)
 
             implementation(libs.auth.firebase.kmp)
             implementation(libs.koin.compose)

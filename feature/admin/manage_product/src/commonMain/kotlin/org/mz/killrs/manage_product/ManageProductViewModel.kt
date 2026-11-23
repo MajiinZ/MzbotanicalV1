@@ -3,7 +3,6 @@ package org.mz.killrs.manage_product
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dev.gitlive.firebase.storage.File
@@ -35,8 +34,12 @@ data class ManageProductState(
         isDiscounted = isDiscounted, stockQuantity = stockQuantity ?: -1, isPublished = isPublished)
 }
 
-class ManageProductViewModel(private val adminRepository: AdminRepository, savedStateHandle: SavedStateHandle) : ViewModel() {
-    private val productId = savedStateHandle.get<String>("id").orEmpty()
+class ManageProductViewModel(
+    private val adminRepository: AdminRepository,
+    /** Passed explicitly from the Navigation 3 key (Screen.ManageProduct.id); null = new product. */
+    productIdArg: String?,
+) : ViewModel() {
+    private val productId = productIdArg.orEmpty()
     val isEditing get() = productId.isNotEmpty()
     val isAuthorized get() = adminRepository.isCurrentUserAdmin()
     var screenState by mutableStateOf(ManageProductState()); private set

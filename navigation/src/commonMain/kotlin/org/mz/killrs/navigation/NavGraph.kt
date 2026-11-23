@@ -1,166 +1,145 @@
 package org.mz.killrs.navigation
 
-
 import androidx.compose.runtime.Composable
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import androidx.navigation.toRoute
+import androidx.lifecycle.viewmodel.navigation3.rememberViewModelStoreNavEntryDecorator
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.runtime.rememberNavBackStack
+import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.NavDisplay
 import org.mz.admin.AdminPanelScreen
 import org.mz.home.HomeGraphScreen
 import org.mz.killrs.CheckoutScreen
 import org.mz.killrs.DetailsScreen
 import org.mz.killrs.PaymentCompleted
+import org.mz.killrs.auth.AgeGateScreen
 import org.mz.killrs.auth.AuthenticationScreen
 import org.mz.killrs.category_search.CategorySearchScreen
 import org.mz.killrs.manage_product.ManageProductScreen
 import org.mz.killrs.profile.ProfileScreen
 import org.mz.killrs.shared.domain.ProductCategory
 import org.mz.killrs.shared.navigation.Screen
+import org.mz.killrs.shared.navigation.ScreenSavedStateConfiguration
+import org.mz.killrs.shared.navigation.navigateUp
+import org.mz.killrs.shared.navigation.replaceAll
 
+/**
+ * Root navigation, built on Navigation 3.
+ *
+ * The back stack is a plain, saveable list of [Screen] keys that we own and mutate
+ * directly; [NavDisplay] renders whatever is on top. Flow of a fresh session:
+ *
+ *   AgeGate -> Auth -> HomeGraph (storefront, with its own nested NavDisplay) -> ...
+ *
+ * Each transition between those three replaces the whole stack, so Back can never
+ * return to (or skip past) the age gate or sign-in.
+ */
 @Composable
 fun SetupNavGraph(
-    startDestination: Screen = Screen.Auth
+    startDestination: Screen = Screen.AgeGate
 ) {
-    val navController = rememberNavController()
+    val backStack = rememberNavBackStack(ScreenSavedStateConfiguration, startDestination)
 
-    NavHost(
-        navController = navController,
-        startDestination = startDestination
-    ) {
-        // 🔹 Authentication
-        composable<Screen.Auth> {
-            AuthenticationScreen(
-                navigateToHome = {
-                    navController.navigate(Screen.HomeGraph) {
-                        popUpTo<Screen.Auth> { inclusive = true }
+    NavDisplay(
+        backStack = backStack,
+        onBack = { backStack.navigateUp() },
+        entryDecorators = listOf(
+            // Keeps rememberSaveable state per entry.
+            rememberSaveableStateHolderNavEntryDecorator(),
+            // Scopes koinViewModel() to each entry and clears it when the entry is popped.
+            rememberViewModelStoreNavEntryDecorator(),
+        ),
+        entryProvider = entryProvider {
+            // 🔹 Age gate (18+). Replaces itself with sign-in once verified.
+            entry<Screen.AgeGate> {
+                AgeGateScreen(
+                    onVerified = { backStack.replaceAll(Screen.Auth) }
+                )
+            }
+
+            // 🔹 Authentication
+            entry<Screen.Auth> {
+                AuthenticationScreen(
+                    navigateToHome = { backStack.replaceAll(Screen.HomeGraph) },
+                )
+            }
+
+            // 🔹 Main app / storefront (with nested bottom-bar NavDisplay inside)
+            entry<Screen.HomeGraph> {
+                HomeGraphScreen(
+                    // Signing out starts a fresh session, which begins at the age gate
+                    // (same behavior as before, when the gate lived inside AuthScreen).
+                    navigateToAuth = { backStack.replaceAll(Screen.AgeGate) },
+                    navigateToProfile = { backStack.add(Screen.Profile) },
+                    navigateToAdmin = { backStack.add(Screen.Admin) },
+                    navigateToDetails = { productId -> backStack.add(Screen.Details(id = productId)) },
+                    navigateToCategorySearch = { categoryName ->
+                        backStack.add(Screen.CategorySearch(categoryName))
+                    },
+                    navigateToCart = { backStack.add(Screen.Cart) },
+                    navigateToCheckout = { totalAmount -> backStack.add(Screen.Checkout(totalAmount)) }
+                )
+            }
+
+            // 🔹 Profile
+            entry<Screen.Profile> {
+                ProfileScreen(
+                    navigateBack = { backStack.navigateUp() }
+                )
+            }
+
+            // 🔹 Admin
+            entry<Screen.Admin> {
+                AdminPanelScreen(
+                    navigateBack = { backStack.navigateUp() },
+                    navigateToManageProduct = { id -> backStack.add(Screen.ManageProduct(id = id)) }
+                )
+            }
+
+            // 🔹 Manage product
+            entry<Screen.ManageProduct> { key ->
+                ManageProductScreen(
+                    navigateBack = { backStack.navigateUp() },
+                    productId = key.id
+                )
+            }
+
+            entry<Screen.Checkout> { key ->
+                CheckoutScreen(
+                    totalAmount = key.totalAmount.toDoubleOrNull() ?: 0.0,
+                    navigateBack = { backStack.navigateUp() },
+                    navigateToPaymentCompleted = { isSuccess, error ->
+                        backStack.add(Screen.PaymentCompleted(isSuccess = isSuccess, error = error))
                     }
-                },
-            )
-        }
+                )
+            }
 
-        // 🔹 Main app (with nested bottom bar NavHost inside)
-        composable<Screen.HomeGraph> {
-            HomeGraphScreen(
-                navigateToAuth = {
-                    navController.navigate(Screen.Auth) {
-                        popUpTo<Screen.HomeGraph> { inclusive = true }
-                    }
-                },
-                navigateToProfile = {
-                    navController.navigate(Screen.Profile)
-                },
-                navigateToAdmin = {
-                    navController.navigate(Screen.Admin)
-                },
-                navigateToDetails = { productId ->
-                    navController.navigate(Screen.Details(id = productId))
-                },
-                navigateToCategorySearch = { categoryName ->
-                    navController.navigate(Screen.CategorySearch(categoryName))
-                },
-                navigateToCart = {
-                    navController.navigate(Screen.Cart)
-                },
-                navigateToCheckout = { totalAmount ->
-                    navController.navigate(Screen.Checkout(totalAmount))
-                }
-            )
-        }
+            entry<Screen.Details> { key ->
+                DetailsScreen(
+                    productId = key.id,
+                    navigateBack = { backStack.navigateUp() },
+                    navigateToCart = { backStack.navigateUp() }
+                )
+            }
 
-
-        // 🔹 Profile
-        composable<Screen.Profile> {
-            ProfileScreen(
-                navigateBack = { navController.navigateUp() }
-            )
-        }
-
-        // 🔹 Admin
-        composable<Screen.Admin> {
-            AdminPanelScreen(
-                navigateBack = { navController.navigateUp() },
-                navigateToManageProduct = { id ->
-                    navController.navigate(Screen.ManageProduct(id = id))
-                }
-            )
-        }
-
-        // 🔹 Manage product
-        composable<Screen.ManageProduct> { backStackEntry ->
-            val args = backStackEntry.toRoute<Screen.ManageProduct>()
-            ManageProductScreen(
-                navigateBack = { navController.navigateUp() },
-                productId = args.id
-            )
-        }
-
-        composable<Screen.Checkout> { backStackEntry ->
-            val checkoutArgs = backStackEntry.toRoute<Screen.Checkout>()
-            val totalAmount = checkoutArgs.totalAmount.toDoubleOrNull() ?: 0.0
-
-            CheckoutScreen(
-                totalAmount = totalAmount,
-                navigateBack = {
-                    navController.navigateUp()
-                },
-                navigateToPaymentCompleted = { isSuccess, error ->
-                    navController.navigate(
-                        Screen.PaymentCompleted(
-                            isSuccess = isSuccess,
-                            error = error
-                        )
+            entry<Screen.CategorySearch> { key ->
+                val category = key.category?.let { ProductCategory.valueOf(it) }
+                if (category != null) {
+                    CategorySearchScreen(
+                        category = category,
+                        navigateToDetails = { id -> backStack.add(Screen.Details(id)) },
+                        navigateBack = { backStack.navigateUp() }
                     )
                 }
-            )
-        }
-
-        composable<Screen.Details> {
-            DetailsScreen(
-                navigateBack = {
-                    navController.navigateUp()
-                },
-                navigateToCart = {
-                    navController.navigateUp()
-                }
-            )
-        }
-        composable<Screen.CategorySearch> {
-            val category = it.toRoute<Screen.CategorySearch>().category?.let { it1 ->
-                ProductCategory.valueOf(
-                    it1
-                )
             }
-            if (category != null) {
-                CategorySearchScreen(
-                    category = category,
-                    navigateToDetails = { id ->
-                        navController.navigate(Screen.Details(id.toString()))
-                    },
-                    navigateBack = {
-                        navController.navigateUp()
-                    }
+
+            entry<Screen.PaymentCompleted> { key ->
+                PaymentCompleted(
+                    isSuccess = key.isSuccess,
+                    error = key.error,
+                    // Back to the storefront with the back stack cleared completely.
+                    navigateBack = { backStack.replaceAll(Screen.HomeGraph) }
                 )
             }
         }
-
-        composable<Screen.PaymentCompleted> {
-            val isSuccess = it.toRoute<Screen.PaymentCompleted>().isSuccess
-            val error = it.toRoute<Screen.PaymentCompleted>().error
-            PaymentCompleted(
-                isSuccess = isSuccess,
-                error = error,
-                navigateBack = {
-                    navController.navigate(Screen.HomeGraph){
-                        launchSingleTop = true
-                        //clear backstack completly
-                        popUpTo(0){
-                            inclusive = true
-                        }
-                    }
-                }
-            )
-        }
-    }
+    )
 }
-

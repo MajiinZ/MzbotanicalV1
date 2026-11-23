@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
 import org.mz.killrs.shared.Exo2FontRegular
 import org.mz.killrs.shared.FontSize
 import org.mz.killrs.shared.Resources
@@ -72,7 +73,7 @@ fun CategorySearchScreen(
     navigateToDetails: (String) -> Unit,
     navigateBack: () -> Unit,
 ) {
-    val viewModel = koinViewModel<CategorySearchViewmodel>()
+    val viewModel = koinViewModel<CategorySearchViewmodel> { parametersOf(category) }
     val filteredProducts by viewModel.filteredProducts.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
 

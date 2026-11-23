@@ -29,6 +29,7 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.viewmodel.koinViewModel
+import org.koin.core.parameter.parametersOf
 import org.mz.killrs.components.NumberOfSeedsChip
 import org.mz.killrs.shared.*
 import org.mz.killrs.shared.component.InfoCard
@@ -42,11 +43,12 @@ import rememberMessageBarState
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailsScreen(
+    productId: String,
     navigateBack: () -> Unit,
     navigateToCart: () -> Unit
 ) {
     val messageBarState = rememberMessageBarState()
-    val viewModel = koinViewModel<DetailsViewModel>()
+    val viewModel = koinViewModel<DetailsViewModel> { parametersOf(productId) }
     val product by viewModel.product.collectAsState()
     val selectedAmount = viewModel.selectedAmountOfSeeds // String? in your VM
     val quantity = viewModel.quantity

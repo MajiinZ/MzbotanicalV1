@@ -6,10 +6,10 @@ plugins {
 
 kotlin {
     jvm {
-        compilations.all {
-            kotlinOptions.jvmTarget = "11"
-            kotlinOptions.freeCompilerArgs += "-Xcontext-receivers"
-            kotlinOptions.freeCompilerArgs += "-Xopt-in=kotlin.RequiresOptIn"
+        // kotlinOptions is an error since Kotlin 2.2; -Xcontext-receivers was removed (unused here).
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
+            optIn.add("kotlin.RequiresOptIn")
         }
     }
 

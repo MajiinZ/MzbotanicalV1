@@ -1,6 +1,5 @@
 package org.mz.killrs.category_search
 
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -18,12 +17,11 @@ import org.mz.killrs.shared.util.RequestState
 
 class CategorySearchViewmodel(
     private val productRepository: ProductRepository,
-    private val savedStateHandle: SavedStateHandle,
+    /** Passed explicitly from the Navigation 3 key (Screen.CategorySearch.category). */
+    category: ProductCategory,
 ) : ViewModel() {
     val products = productRepository.readProductsByCategoryFlow(
-        category = ProductCategory.valueOf(
-            savedStateHandle.get<String>("category") ?: ProductCategory.Hybrid.name
-        )
+        category = category
     ).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
