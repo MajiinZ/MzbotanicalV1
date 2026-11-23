@@ -13,6 +13,7 @@ import org.mz.killrs.shared.domain.CartItem
 import org.mz.killrs.shared.domain.Customer
 import org.mz.killrs.shared.Constants.ADMIN_EMAIL
 import org.mz.killrs.shared.util.RequestState
+import org.mz.killrs.shared.analytics.Analytics
 
 class CustomerRepositoryImpl : CustomerRepository {
     @OptIn(kotlin.uuid.ExperimentalUuidApi::class)
@@ -67,6 +68,9 @@ class CustomerRepositoryImpl : CustomerRepository {
 
                 if (!customerExists) {
                     customerCollection.document(user.uid).set(customer)
+                    Analytics.signUp(userId = user.uid, method = "google")
+                } else {
+                    Analytics.identify(user.uid)
                 }
                 onSuccess()
             } else {
@@ -190,6 +194,14 @@ class CustomerRepositoryImpl : CustomerRepository {
                     customerCollection.document(currentUserId)
                         .update(data = mapOf("cart" to updatedCart))
 
+                    Analytics.activatedIfFirst(
+                        userId = currentUserId,
+                        trigger = "add_to_cart",
+                        properties = mapOf(
+                            "product_id" to cartItem.productId,
+                            "quantity" to cartItem.quantity
+                        )
+                    )
                     onSuccess()
                 } else {
                     onError("Customer document does not exist.")
@@ -302,6 +314,7 @@ class CustomerRepositoryImpl : CustomerRepository {
     override suspend fun signOut(): RequestState<Unit> {
         return try {
             Firebase.auth.signOut()
+            Analytics.identify(null)
             RequestState.Success(data = Unit)
         } catch (e: Exception) {
             RequestState.Error("Error while signing out: ${e.message}")
