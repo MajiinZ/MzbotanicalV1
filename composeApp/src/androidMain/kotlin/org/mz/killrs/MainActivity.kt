@@ -8,6 +8,8 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import org.mz.killrs.shared.analytics.Analytics
+import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,5 +47,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             App() // ✅ Your composable app entry
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Drives the "Return Visit" event: fires once per new local calendar day.
+        Analytics.appOpened(LocalDate.now().toEpochDay())
     }
 }

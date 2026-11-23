@@ -208,3 +208,30 @@ Root and server/data/navigation listings — module presence only.
 This document has not been committed to the repository and makes no changes to application behavior.
 
 Displaying MZBotanicals_Application_Handbook (1).md.
+
+## Analytics (Amplitude)
+
+The Android app sends product analytics to Amplitude through `org.mz.killrs.shared.analytics.Analytics`.
+
+| Event | When it fires | Properties |
+|---|---|---|
+| `Sign Up` | First Google sign-in that creates a new customer record | `method` |
+| `Activated` | First successful add-to-cart for a user (once per user per device) | `trigger`, `product_id`, `quantity` |
+| `Return Visit` | App comes to the foreground on a later local calendar day than the last open | `days_since_last_visit` |
+| `Subscribed` | Not wired yet. The app has no subscription flow. Call `Analytics.subscribed(...)` once Stripe confirms a subscription | `plan`, `price_usd`, `billing_interval` |
+
+Signed-in users are identified by their Firebase UID, and sign out resets the Amplitude user. Amplitude's default session tracking (`[Amplitude] Start Session` / `End Session`) is also on.
+
+### Setup
+
+1. In Amplitude, open **Settings → Projects → default** and copy the project's **API Key**.
+2. Add it to `local.properties` in the repo root (this file is gitignored):
+
+   ```properties
+   AMPLITUDE_API_KEY=your_key_here
+   ```
+
+   CI can set the `AMPLITUDE_API_KEY` environment variable instead.
+3. Build and run the Android app. With no key, analytics stays off and the app behaves exactly as before.
+
+Desktop builds use a no-op tracker.

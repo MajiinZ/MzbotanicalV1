@@ -88,6 +88,7 @@ kotlin {
                 implementation(libs.splash.screen)
                 implementation(libs.koin.android)
                 implementation(libs.firebase.common.ktx)
+                implementation(libs.amplitude.analytics.android)
             }
         }
 
@@ -106,6 +107,15 @@ kotlin {
 
     }
 }
+
+// Amplitude API key: set AMPLITUDE_API_KEY in local.properties (gitignored) or the environment.
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.isFile) file.inputStream().use(::load)
+}
+val amplitudeApiKey: String = localProperties.getProperty("AMPLITUDE_API_KEY")
+    ?: System.getenv("AMPLITUDE_API_KEY")
+    ?: ""
 
 android {
     namespace = "org.mz.killrs"
@@ -128,6 +138,11 @@ android {
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
+        buildConfigField("String", "AMPLITUDE_API_KEY", "\"${amplitudeApiKey}\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     packaging {

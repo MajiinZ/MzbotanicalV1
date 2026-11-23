@@ -34,6 +34,7 @@ junitVersion = "1.2.1"
 espressoCore = "3.6.1"
 lifecycleRuntimeKtx = "2.9.2"
 composeBom = "2024.04.01"
+amplitude = "1.37.1"
 
 [libraries]
 # AndroidX & Compose
@@ -48,6 +49,9 @@ androidx-core = { group = "androidx.core", name = "core", version.ref = "core" }
 auth-kmp = { module = "io.github.mirzemehdi:kmpauth-google", version.ref = "auth" }
 auth-firebase-kmp = { module = "io.github.mirzemehdi:kmpauth-firebase", version.ref = "auth" }
 kmp-notifier = { module = "io.github.mirzemehdi:kmpnotifier", version.ref = "notifier" }
+
+# Analytics
+amplitude-analytics-android = { module = "com.amplitude:analytics-android", version.ref = "amplitude" }
 
 # Firebase
 firebase-app = { module = "dev.gitlive:firebase-app", version.ref = "firebase" }
