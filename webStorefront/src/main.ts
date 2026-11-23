@@ -3,6 +3,7 @@ import {subscribeStore, signIn, signOut, addToCart, setCartQuantity, requestAcco
 import type {StoreState, Product, StoreOrder, ProfileUpdate, CartLine} from './types';
 import {catalogCategories, catalogCategory, cleanSearch, parseStorefrontHash, requiresAge, storefrontHash, type CatalogFilters, type Route} from './catalog-route';
 import {normalizeProduct} from './domain';
+import {mockSummary} from './mock-checkout';
 
 declare const __MZ_REVIEW_BUILD__: boolean;
 
@@ -83,6 +84,7 @@ function openAgeGate(destination: string): void {
 function navigate(route: Route, productId = '', filters?: CatalogFilters): void {
   const next = storefrontHash(route, productId, filters);
   if (requiresAge(route) && !ui.agePassed) {openAgeGate(next); return;}
+  if (route === 'test-checkout') {ui.toast = ''; clearTimeout(toastTimer);}
   completeNavigation(next);
 }
 function completeNavigation(next: string): void {
@@ -92,9 +94,11 @@ function completeNavigation(next: string): void {
   window.scrollTo({top: 0, behavior: 'instant'});
 }
 function readRoute(): void {
-  const {route, productId, filters} = parseStorefrontHash(location.hash);
+  const parsed = parseStorefrontHash(location.hash);
+  const {productId, filters} = parsed;
+  const route = !__MZ_REVIEW_BUILD__ && parsed.route === 'test-checkout' ? 'cart' : parsed.route;
   ui.route = route; ui.productId = productId; ui.category = filters.category; ui.search = filters.search;
-  document.title = `${({home: 'The collection', explore: 'Explore', cart: 'Your cart', orders: 'Your orders', account: 'Your account', merchants: 'For breeders & seed banks', product: ui.agePassed && productById(ui.productId)?.title || 'Product details'})[route]} — MZ Botanicals`;
+  document.title = `${({home: 'The collection', explore: 'Explore', cart: 'Your cart', orders: 'Your orders', account: 'Your account', merchants: 'For breeders & seed banks', 'test-checkout': 'Test checkout', product: ui.agePassed && productById(ui.productId)?.title || 'Product details'})[route]} — MZ Botanicals`;
 }
 function changeFilters(filters: CatalogFilters, replace = false): void {
   const next = storefrontHash('explore', '', filters);
@@ -173,7 +177,12 @@ function details(): string {
   const max = Math.max(1,Math.min(10,product.stockQuantity)); ui.quantity = Math.min(max, Math.max(1, ui.quantity));
   const canSave = !!product.stockQuantity && product.packSize !== null;
   const image = imageUrl(product.thumbnail) ? `<button class="detail-image" data-action="image" aria-label="Enlarge ${html(product.title)} image">${productPhoto(product)}<span class="image-hint">Take a closer look ${icon('plus')}</span></button>` : `<div class="detail-image">${productPhoto(product)}</div>`;
-  return `<section class="section detail-section">${breadcrumb}<div class="product-detail">${image}<div class="detail-copy"><span class="eyebrow">${html(product.category || 'MZ Botanicals collection')}</span><h1>${html(product.title)}</h1><div class="selection-card product-facts" aria-label="Pack details"><h2>Pack details</h2><dl class="pack-row"><div><dt>Pack size</dt><dd>${packLabel(product)}</dd></div><div><dt>Availability</dt><dd>${stockLabel(product)}</dd></div><div><dt>Price per pack</dt><dd>${cardPrice(product)}</dd></div></dl><div class="checkout-notice product-checkout">${icon('lock')}<div><strong>Online checkout is unavailable.</strong><p>${canSave ? 'You can save this pack to your cart. Saving does not place an order.' : 'This pack cannot be saved to your cart right now.'}</p></div></div>${canSave ? `<div class="purchase-row"><label class="quantity-field" for="product-quantity"><span class="field-label">Quantity · packs</span><input id="product-quantity" type="number" min="1" max="${max}" value="${ui.quantity}" inputmode="numeric" ${disabled(locked())}/></label><div class="selection-total"><span class="field-label">Selection subtotal</span><strong>${money(product.priceCents * ui.quantity)}</strong></div></div><button class="button wide" data-action="add-to-cart" ${disabled(locked())}>${icon('bag')}${store.user ? 'Save to cart' : 'Sign in to save to cart'}</button>` : ''}</div>${product.description.trim() ? `<p class="description">${html(product.description)}</p>` : ''}${product.provenance ? `<section class="product-provenance"><h2>About this breeder</h2>${externalLink(product.provenance.url, product.provenance.name)}</section>` : ''}</div></div></section>`;
+  const checkoutHeading = __MZ_REVIEW_BUILD__ ? 'Test checkout only' : 'Online checkout is unavailable.';
+  const checkoutNote = !canSave ? 'This pack cannot be added to your cart right now.' : __MZ_REVIEW_BUILD__
+    ? 'Add this sample to your test cart. No real orders or payments.'
+    : 'You can save this pack to your cart. Saving does not place an order.';
+  const addLabel = __MZ_REVIEW_BUILD__ ? 'Add to test cart' : store.user ? 'Save to cart' : 'Sign in to save to cart';
+  return `<section class="section detail-section">${breadcrumb}<div class="product-detail">${image}<div class="detail-copy"><span class="eyebrow">${html(product.category || 'MZ Botanicals collection')}</span><h1>${html(product.title)}</h1><div class="selection-card product-facts" aria-label="Pack details"><h2>Pack details</h2><dl class="pack-row"><div><dt>Pack size</dt><dd>${packLabel(product)}</dd></div><div><dt>Availability</dt><dd>${stockLabel(product)}</dd></div><div><dt>Price per pack</dt><dd>${cardPrice(product)}</dd></div></dl><div class="checkout-notice product-checkout">${icon('lock')}<div><strong>${checkoutHeading}</strong><p>${checkoutNote}</p></div></div>${canSave ? `<div class="purchase-row"><label class="quantity-field" for="product-quantity"><span class="field-label">Quantity · packs</span><input id="product-quantity" type="number" min="1" max="${max}" value="${ui.quantity}" inputmode="numeric" ${disabled(locked())}/></label><div class="selection-total"><span class="field-label">Selection subtotal</span><strong>${money(product.priceCents * ui.quantity)}</strong></div></div><button class="button wide" data-action="add-to-cart" ${disabled(locked())}>${icon('bag')}${addLabel}</button>` : ''}</div>${product.description.trim() ? `<p class="description">${html(product.description)}</p>` : ''}${product.provenance ? `<section class="product-provenance"><h2>About this breeder</h2>${externalLink(product.provenance.url, product.provenance.name)}</section>` : ''}</div></div></section>`;
 }
 function merchantPage(): string {
   return `<section class="merchant-hero">
@@ -223,8 +232,24 @@ function signInPanel(title: string, text: string): string {return `<section clas
 function cartSelectionMatches(line: CartLine, product: Product | undefined): product is Product {
   return Boolean(product && product.packSize !== null && line.amountOfSeeds !== null && line.amountOfSeeds === product.packSize);
 }
+function cartCheckout(): string {
+  if (__MZ_REVIEW_BUILD__) {
+    const ready = Boolean(mockSummary(store.cart, store.products));
+    return `<div class="checkout-notice">${icon('lock')}<div><strong>Test checkout only</strong><p>${ready ? 'Review your sample items. No real orders or payments.' : 'Update unavailable items or quantities before starting test checkout.'}</p></div></div><button class="button wide" data-route="test-checkout" ${disabled(!ready)}>Continue to test checkout ${icon('arrow')}</button>`;
+  }
+  return `<div class="checkout-notice">${icon('lock')}<div><strong>Online checkout is unavailable.</strong><p>Your cart is saved. No order has been placed.</p></div></div><button class="button wide" disabled>Checkout unavailable</button>`;
+}
+function testCheckout(): string {
+  if (!__MZ_REVIEW_BUILD__) return cart();
+  const receipt = store.testReceipt;
+  const summary = receipt ?? mockSummary(store.cart, store.products);
+  if (!store.user || locked() || !summary) return `<section class="page-heading"><span class="eyebrow">REVIEW PREVIEW</span><h1>Test checkout</h1></section><section class="section">${emptyState('bag', 'No items ready for checkout', 'Add an available sample item or update your test cart to continue.', 'Return to cart', 'cart')}</section>`;
+  return `<section class="page-heading"><span class="eyebrow">REVIEW PREVIEW · SIMULATION ONLY</span><h1>${receipt ? 'Test order complete' : 'Test checkout'}</h1><p>${receipt ? 'No real order was placed. Nothing was charged or will be shipped.' : 'Review your sample items and place a test order. No real payment or delivery details are needed.'}</p></section>
+  <section class="section test-checkout-layout"><article class="order-card"><div class="order-heading"><div><span class="eyebrow">${receipt ? `TEST RECEIPT ${html(receipt.id)}` : 'ORDER REVIEW'}</span><h2>${receipt ? 'Your test receipt' : 'Sample items'}</h2></div><span class="status-pill muted">Simulation</span></div><ul class="order-items">${summary.items.map(item => `<li><span>${html(item.title)}<small>${item.packSize} seeds per pack</small></span><span>${item.quantity} ${item.quantity === 1 ? 'pack' : 'packs'}</span><span>${money(item.total)}</span></li>`).join('')}</ul><div class="order-total"><span>Simulated total</span><strong>${money(summary.subtotal)}</strong></div><p class="order-note">Shipping and tax are not simulated.</p></article>
+  <aside class="cart-summary"><span class="eyebrow">${receipt ? 'NO PAYMENT TAKEN' : 'TEST DETAILS'}</span><h2>${receipt ? 'Simulation finished' : 'Delivery & payment'}</h2><p class="test-checkout-note">${receipt ? 'This receipt exists only in this preview session and clears on reload.' : 'Delivery is simulated. No address is collected. No card or payment information is collected.'}</p>${receipt ? '<button class="button wide" data-route="explore">Back to the collection</button>' : `<button class="button wide" data-action="place-test-order" ${disabled()}>Place test order ${icon('arrow')}</button><button class="text-button" data-route="cart">${icon('back')} Back to cart</button>`}</aside></section>`;
+}
 function cart(): string {
-  if (!store.user) return signInPanel('A place for your next favorites.', 'Sign in to save your cart and pick up where you left off.');
+  if (!store.user) return __MZ_REVIEW_BUILD__ ? `<section class="section">${emptyState('bag','Your test cart is empty.','Add an available sample item to try checkout.','Explore the collection','explore')}</section>` : signInPanel('A place for your next favorites.', 'Sign in to save your cart and pick up where you left off.');
   if (locked()) return deletionNotice();
   const subtotal = store.cart.reduce((sum,line) => {const product = productById(line.productId); return sum + (cartSelectionMatches(line,product) ? product.priceCents * line.quantity : 0);}, 0);
   const hasChangedSelection = store.cart.some(line => !cartSelectionMatches(line,productById(line.productId)));
@@ -232,7 +257,7 @@ function cart(): string {
     const product = productById(line.productId), selectionMatches = cartSelectionMatches(line,product);
     const max = Math.min(10,product?.stockQuantity ?? 0);
     return `<article class="cart-item">${product ? `<button class="cart-image" data-product="${html(product.id)}" aria-label="View ${html(product.title)}">${productPhoto(product)}</button>` : `<div class="cart-image unavailable-photo">${icon('leaf')}</div>`}<div class="cart-item-copy"><span class="eyebrow">${html(product?.category || 'Unavailable item')}</span><h2>${html(product?.title || 'This product is no longer available')}</h2><p>${line.amountOfSeeds ? `${line.amountOfSeeds} seeds per pack` : 'Pack details unavailable'}</p><div class="cart-controls"><div class="stepper" aria-label="Quantity"><button data-cart-id="${html(line.id)}" data-cart-quantity="${Math.max(0,line.quantity-1)}" aria-label="Remove one pack" ${disabled(!selectionMatches)}>${icon('minus')}</button><span aria-label="${line.quantity} packs">${line.quantity}</span><button data-cart-id="${html(line.id)}" data-cart-quantity="${line.quantity+1}" aria-label="Add one pack" ${disabled(!selectionMatches || line.quantity >= max)}>${icon('plus')}</button></div><button class="text-button remove" data-cart-id="${html(line.id)}" data-cart-quantity="0" ${disabled()}>Remove</button></div>${product && !selectionMatches ? '<p class="inline-error">Pack size changed or is unavailable. Remove this selection and choose a current pack from the collection.</p>' : selectionMatches && line.quantity > product.stockQuantity ? '<p class="inline-error">Availability changed. Please reduce the quantity.</p>' : ''}</div><strong class="cart-line-total">${selectionMatches ? money(product.priceCents*line.quantity) : '—'}</strong></article>`;
-  }).join('')}</div><aside class="cart-summary"><span class="eyebrow">A LITTLE CLOSER</span><h2>Your selection</h2><dl><div><dt>Item subtotal</dt><dd>${hasChangedSelection ? 'Review changed or unavailable items' : money(subtotal)}</dd></div><div><dt>Shipping &amp; tax</dt><dd>Not calculated</dd></div></dl><div class="checkout-notice">${icon('lock')}<div><strong>Online checkout is unavailable.</strong><p>Your cart is saved. No order has been placed.</p></div></div><button class="button wide" disabled>Checkout unavailable</button><button class="text-button" data-route="explore">Continue exploring ${icon('arrow')}</button></aside>` : `<div class="cart-empty">${emptyState('bag','Something good belongs here.','Explore the collection and save your favorite packs to your cart.','Explore the collection','explore')}</div>`}</section>`;
+  }).join('')}</div><aside class="cart-summary"><span class="eyebrow">A LITTLE CLOSER</span><h2>Your selection</h2><dl><div><dt>Item subtotal</dt><dd>${hasChangedSelection ? 'Review changed or unavailable items' : money(subtotal)}</dd></div><div><dt>Shipping &amp; tax</dt><dd>Not calculated</dd></div></dl>${cartCheckout()}<button class="text-button" data-route="explore">Continue exploring ${icon('arrow')}</button></aside>` : `<div class="cart-empty">${emptyState('bag','Something good belongs here.','Explore the collection and save your favorite packs to your cart.','Explore the collection','explore')}</div>`}</section>`;
 }
 function orderCard(order: StoreOrder): string {
   const date = order.createdAt ? new Intl.DateTimeFormat('en-US',{dateStyle:'medium'}).format(new Date(order.createdAt)) : 'Date unavailable';
@@ -266,7 +291,7 @@ function render(): void {
   const active = document.activeElement as HTMLInputElement | null;
   const focusId = active?.id, selection = active?.selectionStart, selectionEnd = active?.selectionEnd;
   const visibleRoute = !ui.agePassed && requiresAge(ui.route) ? 'home' : ui.route;
-  const content = ({home, explore, product: details, cart, orders, account, merchants: merchantPage})[visibleRoute]();
+  const content = ({home, explore, product: details, cart, orders, account, merchants: merchantPage, 'test-checkout': testCheckout})[visibleRoute]();
   app.innerHTML = `${header()}${__MZ_REVIEW_BUILD__ ? '<div class="connection-bar review-banner">Review preview · Sample catalog and simulated accounts. No live connection.</div>' : ''}${ui.offline && visibleRoute !== 'merchants' ? '<div class="connection-bar" role="status">You are offline. Connect to save changes.</div>' : ''}${store.error && visibleRoute !== 'merchants' ? `<div class="error-bar" role="alert">${html(store.error)}<button class="text-button" data-action="refresh">Refresh page</button></div>` : ''}<main id="main-content" tabindex="-1">${content}</main>${footer()}${bottomNav()}${ui.toast ? `<div class="toast ${ui.toastError ? 'error' : ''}" role="${ui.toastError ? 'alert' : 'status'}">${icon(ui.toastError ? 'close' : 'check')}<span>${html(ui.toast)}</span><button class="icon-button" data-action="close-toast" aria-label="Dismiss notification">${icon('close')}</button></div>` : ''}${modal()}`;
   app.querySelectorAll('img').forEach(image => image.addEventListener('error', () => image.classList.add('image-failed'), {once:true}));
   const dialog = document.querySelector<HTMLDialogElement>('#store-dialog');
@@ -297,7 +322,19 @@ app.addEventListener('click', event => {
     case 'image': ui.modal = 'image'; render(); break;
     case 'delete-dialog': ui.modal = 'delete'; render(); break;
     case 'confirm-deletion': void perform(async()=>{await requestAccountDeletion(); ui.modal = '';},'Your deletion request has been recorded for review.'); break;
-    case 'add-to-cart': if (!store.user) beginSignIn(); else void perform(()=>addToCart(ui.productId,ui.quantity),'Saved to your cart. No order was placed.'); break;
+    case 'add-to-cart': {
+      if (__MZ_REVIEW_BUILD__) {
+        const {productId, quantity} = ui;
+        void perform(async()=>{if (!store.user) await signIn(); await addToCart(productId,quantity); navigate('cart');});
+      } else if (!store.user) beginSignIn();
+      else void perform(()=>addToCart(ui.productId,ui.quantity),'Saved to your cart. No order was placed.');
+      break;
+    }
+    case 'place-test-order':
+      if (__MZ_REVIEW_BUILD__ && ui.route === 'test-checkout' && ui.agePassed && !locked()) {
+        void perform(async()=>{const {placeTestOrder} = await import('./review-store'); await placeTestOrder(); document.getElementById('main-content')?.focus();});
+      }
+      break;
   }
 });
 app.addEventListener('input', event => {

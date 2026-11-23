@@ -2,6 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {changeCart, moneyCents, normalizeBusiness, normalizeOrder, normalizeProduct, normalizeProfile, parseCart, safeHttpsUrl} from './domain';
 import {parseStorefrontHash, requiresAge, storefrontHash} from './catalog-route';
+import {mockSummary} from './mock-checkout';
+import * as review from './review-store';
+import type {StoreState} from './types';
 
 const fixture = {title: 'A real published pack', price: 29.99, description: 'Description', thumbnail: 'https://example.com/photo.png',
   category: 'Hybrid', amountOfSeeds: '6', stockQuantity: 8, isPublished: true, isNew: true};
@@ -17,6 +20,39 @@ test('catalog URLs round-trip filters across reloads and product links', () => {
   assert.equal(requiresAge('explore'), true);
   assert.equal(requiresAge('product'), true);
   assert.equal(requiresAge('merchants'), false);
+  assert.equal(requiresAge('test-checkout'), true);
+});
+
+test('test checkout computes integer totals and rejects empty, stale and over-stock carts', () => {
+  const line = {id:'line', productId:'sku', amountOfSeeds:6, quantity:2};
+  assert.equal(mockSummary([line], [product])?.subtotal, 5998);
+  assert.equal(mockSummary([], [product]), null);
+  assert.equal(mockSummary([line], []), null);
+  assert.equal(mockSummary([{...line, amountOfSeeds:3}], [product]), null);
+  assert.equal(mockSummary([line, {...line, id:'line-2', quantity:7}], [product]), null);
+});
+
+test('review checkout clears the cart, issues one simulated receipt and never adds to order history', async () => {
+  let state!: StoreState;
+  const unsubscribe = review.subscribeStore(value => {state = value;});
+  try {
+    await assert.rejects(review.placeTestOrder(), /unavailable/);
+    await review.signIn();
+    await assert.rejects(review.placeTestOrder(), /review your cart/i);
+    await review.addToCart('sample-hybrid', 2);
+    await review.placeTestOrder();
+    assert.ok(state.testReceipt);
+    assert.equal(state.testReceipt.id, 'TEST-0001');
+    assert.equal(state.testReceipt.subtotal, 4800);
+    assert.deepEqual(state.cart, []);
+    assert.deepEqual(state.orders.map(order => order.id), ['sample-order']);
+    await assert.rejects(review.placeTestOrder(), /review your cart/i);
+    await review.addToCart('sample-sativa', 1);
+    assert.equal(state.testReceipt, null);
+  } finally {
+    unsubscribe();
+    await review.signOut();
+  }
 });
 
 test('breeder attribution appears only with an explicitly approved name and public HTTPS source', () => {

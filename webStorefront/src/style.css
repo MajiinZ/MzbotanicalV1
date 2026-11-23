@@ -42,6 +42,11 @@
 .product-provenance{margin:18px 0 6px;padding-top:16px;border-top:1px solid var(--outline)}
 .product-provenance a{display:inline-flex;align-items:center;min-height:44px;text-decoration:underline;text-underline-offset:.25em}
 .review-banner{background:#f1e5cb;color:#433016;font-size:.875rem}
+.test-checkout-layout{padding-top:20px;display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,330px);gap:32px;align-items:start}
+.test-checkout-layout .order-card{margin:0;min-width:0}
+.test-checkout-layout .cart-summary{position:static}
+.test-checkout-note{font-size:.875rem;color:var(--muted);margin:-8px 0 20px}
+@media(max-width:760px){.test-checkout-layout{grid-template-columns:1fr;gap:18px}}
 
 .merchant-hero{max-width:1280px;margin:0 auto;padding:clamp(36px,6vw,86px) 4%;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:clamp(24px,7vw,112px);align-items:center}
 .merchant-hero .eyebrow,.merchant-demo .eyebrow{font-size:.75rem}

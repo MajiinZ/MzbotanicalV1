@@ -1,8 +1,8 @@
 export const catalogCategories = ['All', 'Indica', 'Sativa', 'Hybrid'] as const;
 export type Category = typeof catalogCategories[number];
 export type CatalogFilters = {category: Category; search: string};
-export type Route = 'home' | 'explore' | 'cart' | 'orders' | 'account' | 'product' | 'merchants';
-const validRoutes: Route[] = ['explore', 'cart', 'orders', 'account', 'product', 'merchants'];
+export type Route = 'home' | 'explore' | 'cart' | 'orders' | 'account' | 'product' | 'merchants' | 'test-checkout';
+const validRoutes: Route[] = ['explore', 'cart', 'orders', 'account', 'product', 'merchants', 'test-checkout'];
 export const cleanSearch = (value: string) => value.slice(0, 100);
 export const catalogCategory = (value: string | null): Category =>
   catalogCategories.find(category => category.toLowerCase() === value?.toLowerCase()) ?? 'All';

@@ -78,6 +78,8 @@ export interface StoreState {
   business: PublicBusiness | null;
   loading: boolean;
   error: string | null;
+  testReceipt?: MockReceipt | null;
 }
 
 export type ProfileUpdate = Pick<Profile, 'firstName' | 'lastName' | 'city' | 'state' | 'postalCode' | 'address' | 'phoneNumber'>;
+import type {MockReceipt} from './mock-checkout';
