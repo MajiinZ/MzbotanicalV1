@@ -49,6 +49,24 @@ candidate and the deployed server switches. There are no browser-created
 orders, payment claims, refunds or invented tax/shipping charges. Administrative
 catalog and fulfillment workflows remain in the existing company apps.
 
+### Catalog links and merchant demo
+
+- The footer links to `/#/merchants`. The merchant page is informational and its
+  demo publishes only to a temporary in-browser fixture. The demo reuses the
+  shopper card and does not use authenticated admin tools or send data to Firebase.
+- Catalog links use `/#/explore?category=hybrid&q=example`. The product page
+  preserves these filters for returning to the same results. The customer age gate
+  still applies when opening a catalog link directly.
+- Optional product provenance is a public, operator-supplied
+  `provenance: { approved: true, name: "...", url: "https://..." }` map. Add it
+  only when the attribution has been checked and approved for public display.
+  Unapproved, incomplete, and invalid entries are omitted. There is no breeder
+  filter or new admin editing surface for this field.
+- `npm run build:review` creates `webStorefront/dist-review/` with an offline
+  fixture catalog and simulated accounts. Use that build for review links and
+  interaction tests without production data. The default `npm run build` and
+  Docker image continue to use Firebase and do not embed the review-store adapter.
+
 The browser SDK relies on the existing deployed Firestore rules. Signing out or
 changing accounts clears private subscriptions and visible state. Client code
 does not grant itself admin rights. This container deployment does not deploy
