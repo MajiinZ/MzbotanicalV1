@@ -51,7 +51,7 @@ const deniedDate = storageGet('mz-web-age-denied');
 const ui = {route: 'home' as Route, productId: '', search: '', category: 'All' as CatalogFilters['category'], busy: '', toast: '', toastError: false,
   modal: '' as '' | 'age' | 'delete' | 'menu' | 'image', agePassed: storageGet('mz-web-age-verified', true) === 'yes',
   ageDenied: Boolean(deniedDate && !adultDate(deniedDate)), ageError: '', ageAction: 'browse', ageDestination: '#/explore', birthDate: '', quantity: 1,
-  profileDraft: {} as Partial<ProfileUpdate>, profileDirty: false, profileUid: '', offline: !navigator.onLine};
+  profileDraft: {} as Partial<ProfileUpdate>, profileDirty: false, profileUid: '', offline: !__MZ_REVIEW_BUILD__ && !navigator.onLine};
 const demoDefaults = {title: 'Sample Hybrid', category: 'Hybrid', pack: '6', stock: '12', price: '24.00'};
 let demoDraft = {...demoDefaults}, demoListing: Product | null = null, demoMessage = '', demoOpen = false;
 let store: StoreState = {authReady: false, user: null, products: [], cart: [], orders: [], profile: null,
@@ -367,8 +367,10 @@ window.addEventListener('popstate', () => {
   const next = parseStorefrontHash(location.hash);
   if (next.route === 'explore' && ui.route === 'explore' && (next.filters.category !== ui.category || next.filters.search !== ui.search)) applyHash();
 });
-window.addEventListener('online',()=>{ui.offline = false; render();});
-window.addEventListener('offline',()=>{ui.offline = true; render();});
+if (!__MZ_REVIEW_BUILD__) {
+  window.addEventListener('online',()=>{ui.offline = false; render();});
+  window.addEventListener('offline',()=>{ui.offline = true; render();});
+}
 document.querySelector('.skip-link')?.addEventListener('click', event => {
   event.preventDefault(); document.getElementById('main-content')?.focus();
 });
