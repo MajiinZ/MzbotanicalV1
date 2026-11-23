@@ -5,7 +5,9 @@ async function main() {
   // The only removed directory is this module's generated dist folder.
   if(path.resolve(output)!==path.join(path.resolve(root),outputName))throw Error('Invalid output path.');
   fs.rmSync(output,{recursive:true,force:true});fs.mkdirSync(path.join(output,'assets'),{recursive:true});
-  fs.copyFileSync(path.join(root,'index.html'),path.join(output,'index.html'));
+  const htmlFile=path.join(root,'index.html');
+  if(review) fs.writeFileSync(path.join(output,'index.html'),fs.readFileSync(htmlFile,'utf8').replace(/((?:href|src)=")\/(assets|brand)\//g,'$1./$2/'));
+  else fs.copyFileSync(htmlFile,path.join(output,'index.html'));
   const publicRoot=path.join(root,'public');
   function rejectLinks(directory) {
     for(const entry of fs.readdirSync(directory,{withFileTypes:true})) {
@@ -20,6 +22,10 @@ async function main() {
     define:{__MZ_REVIEW_BUILD__: JSON.stringify(review)}, plugins:review?[{name:'local-review-store',setup(build) {
       build.onResolve({filter:/^\.\/firebase-store$/},()=>({path:path.join(root,'src/review-store.ts')}));
     }}]:[]});
+  if(review) {
+    const stylesheet=path.join(output,'assets/app.css');
+    fs.writeFileSync(stylesheet,fs.readFileSync(stylesheet,'utf8').replaceAll('url(/brand/','url(../brand/'));
+  }
   function compress(directory) {
     for(const entry of fs.readdirSync(directory,{withFileTypes:true})) {
       const file=path.join(directory,entry.name);
