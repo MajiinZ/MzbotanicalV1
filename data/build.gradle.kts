@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.androidLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.serialization)
 }
 
 kotlin {
@@ -33,9 +34,10 @@ kotlin {
             implementation(libs.androidx.lifecycle.viewmodel)
             implementation(libs.androidx.lifecycle.runtime.compose)
 
-            implementation(libs.firebase.firestore)
-            implementation(libs.firebase.storage)
-            implementation(libs.auth.firebase.kmp)
+            api(libs.supabase.auth)
+            implementation(libs.supabase.postgrest)
+            implementation(libs.supabase.storage)
+            implementation(libs.ktor.client.okhttp)
             implementation(libs.kotlinx.serialization)
             implementation(libs.kotlinx.coroutines.core)
 

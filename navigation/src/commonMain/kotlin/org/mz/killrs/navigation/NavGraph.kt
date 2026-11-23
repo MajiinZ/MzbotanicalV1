@@ -20,7 +20,9 @@ import org.mz.killrs.shared.navigation.Screen
 
 @Composable
 fun SetupNavGraph(
-    startDestination: Screen = Screen.Auth
+    startDestination: Screen = Screen.Auth,
+    ageAlreadyVerified: Boolean = false,
+    enablePasswordReset: Boolean = false,
 ) {
     val navController = rememberNavController()
 
@@ -31,6 +33,8 @@ fun SetupNavGraph(
         // 🔹 Authentication
         composable<Screen.Auth> {
             AuthenticationScreen(
+                ageAlreadyVerified = ageAlreadyVerified,
+                enablePasswordReset = enablePasswordReset,
                 navigateToHome = {
                     navController.navigate(Screen.HomeGraph) {
                         popUpTo<Screen.Auth> { inclusive = true }
@@ -163,4 +167,3 @@ fun SetupNavGraph(
         }
     }
 }
-

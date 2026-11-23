@@ -1,16 +1,18 @@
 package org.mz.data
 
 import org.mz.data.domain.CustomerRepository
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
-import dev.gitlive.firebase.firestore.firestore
 import org.mz.data.domain.OrderRepository
+import org.mz.data.supabase.MzSupabase
 import org.mz.killrs.shared.domain.Order
 
- class OrderRepositoryImpl(
-    private val customerRepository: CustomerRepository,
+/**
+ * Checkout is disabled for now. Clients are not allowed to insert orders in Supabase
+ * (row-level security); orders must be created by a trusted server once payments exist.
+ */
+class OrderRepositoryImpl(
+    @Suppress("unused") private val customerRepository: CustomerRepository,
 ) : OrderRepository {
-    override fun getCurrentUserId() = Firebase.auth.currentUser?.uid
+    override fun getCurrentUserId() = MzSupabase.currentUserId()
 
     override suspend fun createTheOrder(
         order: Order,
@@ -20,22 +22,6 @@ import org.mz.killrs.shared.domain.Order
         if (!org.mz.killrs.shared.Constants.CHECKOUT_ENABLED) {
             onError("Checkout is currently disabled."); return
         }
-        try {
-            val currentUserId = getCurrentUserId()
-            if (currentUserId != null) {
-                val database = Firebase.firestore
-                val orderCollection = database.collection(collectionPath = "order")
-                orderCollection.document(order.id).set(order)
-                customerRepository.deleteAllCartItems(
-                    onSuccess = {},
-                    onError = {}
-                )
-                onSuccess()
-            } else {
-                onError("User is not available.")
-            }
-        } catch (e: Exception) {
-            onError("Error while adding a product to cart: ${e.message}")
-        }
+        onError("Online checkout is not available in this version of the app.")
     }
 }

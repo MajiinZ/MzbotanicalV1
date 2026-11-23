@@ -29,7 +29,6 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
-    alias(libs.plugins.google.services)
 
 }
 
@@ -61,12 +60,11 @@ kotlin {
 
 
 
-                implementation(libs.auth.kmp)
-                implementation(libs.firebase.app)
 
                 implementation(libs.koin.compose)
 
                 implementation(project(path = ":navigation"))
+                implementation(project(path = ":feature:auth"))
                 implementation(project(path = ":shared"))
                 implementation(project(path = ":di"))
                 implementation(project(path = ":data"))
@@ -87,7 +85,6 @@ kotlin {
                 implementation(libs.androidx.activity.compose)
                 implementation(libs.splash.screen)
                 implementation(libs.koin.android)
-                implementation(libs.firebase.common.ktx)
             }
         }
 
@@ -162,59 +159,12 @@ compose.desktop {
         mainClass = "org.mz.killrs.MainKt"
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb)
-            // Firebase, gRPC, and SQLite load JDK classes indirectly. Bundle the
-            // full runtime so native installers do not omit those dependencies.
+            // Bundle the full runtime so native installers do not omit JDK modules used by Ktor.
             includeAllModules = true
             packageName = "org.mz.killrs"
             packageVersion = "1.0.1"
         }
     }
-}
-
-abstract class GenerateDesktopFirebaseConfig : DefaultTask() {
-    @get:InputFile
-    @get:PathSensitive(PathSensitivity.RELATIVE)
-    abstract val sourceConfig: RegularFileProperty
-
-    @get:Input
-    abstract val androidPackageName: Property<String>
-
-    @get:OutputFile
-    abstract val outputConfig: RegularFileProperty
-
-    @TaskAction
-    fun generate() {
-        val config = JsonSlurper().parse(sourceConfig.get().asFile) as Map<*, *>
-        val firebaseProject = config["project_info"] as Map<*, *>
-        val client = (config["client"] as List<*>).map { it as Map<*, *> }.single {
-            val info = it["client_info"] as Map<*, *>
-            val androidInfo = info["android_client_info"] as Map<*, *>
-            androidInfo["package_name"] == androidPackageName.get()
-        }
-        val clientInfo = client["client_info"] as Map<*, *>
-        val apiKey = (client["api_key"] as List<*>).first() as Map<*, *>
-        val values = Properties().apply {
-            setProperty("applicationId", clientInfo["mobilesdk_app_id"] as String)
-            setProperty("apiKey", apiKey["current_key"] as String)
-            setProperty("projectId", firebaseProject["project_id"] as String)
-            firebaseProject["project_number"]?.let { setProperty("gcmSenderId", it.toString()) }
-            firebaseProject["storage_bucket"]?.let { setProperty("storageBucket", it.toString()) }
-            firebaseProject["firebase_url"]?.let { setProperty("databaseUrl", it.toString()) }
-        }
-        val output = outputConfig.get().asFile
-        output.parentFile.mkdirs()
-        output.outputStream().use { values.store(it, "Firebase public client configuration") }
-    }
-}
-
-val generateDesktopFirebaseConfig = tasks.register<GenerateDesktopFirebaseConfig>("generateDesktopFirebaseConfig") {
-    sourceConfig.set(layout.projectDirectory.file("google-services.json"))
-    androidPackageName.set("org.mz.killrs")
-    outputConfig.set(layout.buildDirectory.file("generated/desktopFirebaseConfig/firebase-desktop.properties"))
-}
-
-tasks.named<ProcessResources>("desktopProcessResources") {
-    from(generateDesktopFirebaseConfig.flatMap { it.outputConfig })
 }
 
 tasks.matching {

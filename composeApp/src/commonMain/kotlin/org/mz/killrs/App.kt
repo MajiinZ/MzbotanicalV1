@@ -1,47 +1,68 @@
 package org.mz.killrs
 
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import com.mmk.kmpauth.google.GoogleAuthCredentials
-import com.mmk.kmpauth.google.GoogleAuthProvider
+import androidx.compose.ui.Alignment
 import org.jetbrains.compose.ui.tooling.preview.Preview
 import org.koin.compose.koinInject
+import org.mz.data.AuthRepository
 import org.mz.data.domain.CustomerRepository
+import org.mz.killrs.auth.AgeVerificationGate
 import org.mz.killrs.navigation.SetupNavGraph
-import org.mz.killrs.shared.Constants.WEB_CLIENT_ID
 import org.mz.killrs.shared.navigation.Screen
 
 @Composable
 @Preview
-fun App() {
+fun AppPreview() = App()
+
+@Composable
+fun App(keepSignedIn: Boolean = false) {
     MaterialTheme {
-        val customerRepository = koinInject<CustomerRepository>()
-        var appReady by remember { mutableStateOf(false) }
-
-        LaunchedEffect(Unit) {
-            // Require an explicit Google sign-in whenever the app is freshly launched.
-            // This prevents Firebase from restoring the previous user's session.
-            customerRepository.signOut()
-            GoogleAuthProvider.create(
-                credentials = GoogleAuthCredentials(serverId = WEB_CLIENT_ID)
-            )
-            appReady = true
+        if (keepSignedIn) {
+            AgeVerificationGate { AndroidSessionNavigation() }
+        } else {
+            val customerRepository = koinInject<CustomerRepository>()
+            var appReady by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) {
+                customerRepository.signOut()
+                appReady = true
+            }
+            if (appReady) SetupNavGraph()
         }
+    }
+}
 
-        AnimatedVisibility(
-            modifier = Modifier.fillMaxSize(),
-            visible = appReady
-        ) {
+@Composable
+private fun AndroidSessionNavigation() {
+    val auth = koinInject<AuthRepository>()
+    var ready by remember { mutableStateOf(false) }
+    var restoredUserId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(auth) {
+        restoredUserId = auth.restoreUserId()
+        ready = true
+    }
+    if (!ready) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator()
+        }
+    } else {
+        // A saved back stack must not override the freshly checked startup destination.
+        CompositionLocalProvider(LocalSaveableStateRegistry provides null) {
             SetupNavGraph(
-                startDestination = Screen.Auth
+                startDestination = if (restoredUserId == null) Screen.Auth else Screen.HomeGraph,
+                ageAlreadyVerified = true,
+                enablePasswordReset = true,
             )
         }
     }

@@ -1,33 +1,32 @@
 package org.mz.data
 
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
-import dev.gitlive.firebase.firestore.firestore
-import kotlinx.coroutines.CancellationException
+import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.Order
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import org.mz.data.domain.ProductRepository
+import org.mz.data.supabase.MzSupabase
+import org.mz.data.supabase.ProductRow
+import org.mz.data.supabase.pollingFlow
+import org.mz.data.supabase.toProduct
 import org.mz.killrs.shared.domain.Product
 import org.mz.killrs.shared.domain.ProductCategory
 import org.mz.killrs.shared.domain.isCatalogVisible
 import org.mz.killrs.shared.util.RequestState
 
 class ProductRepositoryImpl : ProductRepository {
-    override fun getCurrentUserId(): String? = Firebase.auth.currentUser?.uid
+    private val db get() = MzSupabase.client
 
-    override fun readAllProducts(): Flow<RequestState<List<Product>>> = flow<RequestState<List<Product>>> {
-        check(getCurrentUserId() != null) { "Sign in to browse products." }
-        Firebase.firestore.collection("product").where { "isPublished" equalTo true }.snapshots.collect { snapshot ->
-            emit(RequestState.Success(snapshot.documents.map { it.toProduct() }
-                .filter { it.isCatalogVisible }.sortedByDescending { it.createdAt }
-                .map { it.copy(title = it.title.uppercase()) }))
-        }
-    }.catch { error ->
-        if (error is CancellationException) throw error
-        emit(RequestState.Error("Unable to load products: ${error.message}"))
+    override fun getCurrentUserId(): String? = MzSupabase.currentUserId()
+
+    override fun readAllProducts(): Flow<RequestState<List<Product>>> = pollingFlow(errorPrefix = "Unable to load products") {
+        if (getCurrentUserId() == null) return@pollingFlow RequestState.Error("Sign in to browse products.")
+        val rows = db.from("products").select {
+            filter { eq("is_published", true) }
+            order("created_at", Order.DESCENDING)
+        }.decodeList<ProductRow>()
+        RequestState.Success(rows.map { it.toProduct() }.filter { it.isCatalogVisible }
+            .map { it.copy(title = it.title.uppercase()) })
     }
 
     private fun filtered(predicate: (Product) -> Boolean): Flow<RequestState<List<Product>>> = readAllProducts().map { state ->
@@ -41,18 +40,13 @@ class ProductRepositoryImpl : ProductRepository {
     override fun readProductsByCategoryFlow(category: ProductCategory) = filtered { it.category == category.name }
     override fun readProductsByIdsFlow(ids: List<String>) = filtered { it.id in ids }
 
-    override fun readProductByIdFlow(id: String): Flow<RequestState<Product>> = flow<RequestState<Product>> {
-        check(getCurrentUserId() != null) { "Sign in to view products." }
-        Firebase.firestore.collection("product").document(id).snapshots.collect { document ->
-            if (!document.exists) emit(RequestState.Error("This product is no longer available."))
-            else {
-                val product = document.toProduct()
-                if (!product.isCatalogVisible) emit(RequestState.Error("This product is not currently published."))
-                else emit(RequestState.Success(product.copy(title = product.title.uppercase())))
-            }
+    override fun readProductByIdFlow(id: String): Flow<RequestState<Product>> = pollingFlow(errorPrefix = "Unable to load this product") {
+        if (getCurrentUserId() == null) return@pollingFlow RequestState.Error("Sign in to view products.")
+        val row = db.from("products").select { filter { eq("id", id) } }.decodeSingleOrNull<ProductRow>()
+        when {
+            row == null -> RequestState.Error("This product is no longer available.")
+            !row.isPublished -> RequestState.Error("This product is not currently published.")
+            else -> RequestState.Success(row.toProduct().let { it.copy(title = it.title.uppercase()) })
         }
-    }.catch { error ->
-        if (error is CancellationException) throw error
-        emit(RequestState.Error("Unable to load this product: ${error.message}"))
     }
 }

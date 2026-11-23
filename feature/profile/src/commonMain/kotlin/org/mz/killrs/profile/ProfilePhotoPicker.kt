@@ -1,7 +1,7 @@
 package org.mz.killrs.profile
 
 import androidx.compose.runtime.Composable
-import dev.gitlive.firebase.storage.File
+import org.mz.killrs.shared.domain.UploadFile
 
 @Composable
-expect fun ProfilePhotoPicker(enabled: Boolean, hasPhoto: Boolean, onSelected: (File) -> Unit)
+expect fun ProfilePhotoPicker(enabled: Boolean, hasPhoto: Boolean, onSelected: (UploadFile) -> Unit)

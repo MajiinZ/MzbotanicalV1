@@ -10,15 +10,3 @@ plugins {
     alias(libs.plugins.kotlin.android) apply false
 }
 
-// GitLive's JVM compatibility SDK leaves Google sign-in unimplemented.
-// Substitute our narrowly patched desktop jar; Android uses Google's own SDK.
-subprojects {
-    if (name != "desktopFirebase") {
-        configurations.configureEach {
-            resolutionStrategy.dependencySubstitution {
-                substitute(module("dev.gitlive:firebase-java-sdk"))
-                    .using(project(":desktopFirebase"))
-            }
-        }
-    }
-}

@@ -1,7 +1,7 @@
 package org.mz.data.domain
 
 
-import dev.gitlive.firebase.storage.File
+import org.mz.killrs.shared.domain.UploadFile
 import kotlinx.coroutines.flow.Flow
 import org.mz.killrs.shared.domain.Product
 import org.mz.killrs.shared.util.RequestState
@@ -17,7 +17,7 @@ interface AdminRepository {
         onError: (String) -> Unit,
     )
 
-    suspend fun uploadImageToStorage(file: File): String?
+    suspend fun uploadImageToStorage(file: UploadFile): String?
     suspend fun deleteImageFromStorage(
         downloadUrl: String,
         onSuccess: () -> Unit,

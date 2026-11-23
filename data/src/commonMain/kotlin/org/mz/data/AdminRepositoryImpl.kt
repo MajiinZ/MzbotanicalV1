@@ -1,300 +1,157 @@
 package org.mz.data
 
-
-import dev.gitlive.firebase.Firebase
-import dev.gitlive.firebase.auth.auth
-import dev.gitlive.firebase.firestore.Direction
-import dev.gitlive.firebase.firestore.firestore
-import dev.gitlive.firebase.storage.File
-import dev.gitlive.firebase.storage.storage
+import io.github.jan.supabase.postgrest.from
+import io.github.jan.supabase.postgrest.query.Order
+import io.github.jan.supabase.storage.storage
+import io.ktor.http.ContentType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.channelFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.mz.data.domain.AdminRepository
+import org.mz.data.supabase.DataRefresh
+import org.mz.data.supabase.MzSupabase
+import org.mz.data.supabase.ProductRow
+import org.mz.data.supabase.SupabaseConfig
+import org.mz.data.supabase.imageContentType
+import org.mz.data.supabase.pollingFlow
+import org.mz.data.supabase.readableMessage
+import org.mz.data.supabase.toProduct
+import org.mz.data.supabase.toRow
 import org.mz.killrs.shared.Constants.ADMIN_EMAIL
-import org.mz.killrs.shared.domain.inventoryValidationError
 import org.mz.killrs.shared.domain.Product
+import org.mz.killrs.shared.domain.UploadFile
+import org.mz.killrs.shared.domain.inventoryValidationError
 import org.mz.killrs.shared.util.RequestState
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
+/** Admin screens. The database re-checks admin rights (public.is_admin()) on every write. */
 class AdminRepositoryImpl : AdminRepository {
-    override fun getCurrentUserId() = Firebase.auth.currentUser?.uid
+    private val db get() = MzSupabase.client
+    private val images get() = db.storage.from(SupabaseConfig.PRODUCT_IMAGES_BUCKET)
+    private val publicImagePrefix =
+        "${SupabaseConfig.URL}/storage/v1/object/public/${SupabaseConfig.PRODUCT_IMAGES_BUCKET}/"
 
-    override fun isCurrentUserAdmin(): Boolean =
-        Firebase.auth.currentUser?.email.equals(ADMIN_EMAIL, ignoreCase = true)
+    override fun getCurrentUserId() = MzSupabase.currentUserId()
 
-    override suspend fun createNewProduct(
-        product: Product,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit,
-    ) {
-        try {
-            product.inventoryValidationError()?.let { onError(it); return }
-            val currentUserId = getCurrentUserId()
-            if (currentUserId != null && isCurrentUserAdmin()) {
-                val firestore = Firebase.firestore
-                val productCollection = firestore.collection(collectionPath = "product")
-                productCollection.document(product.id)
-                    .set(product.copy(title = product.title.lowercase())) { encodeDefaults = true }
-                onSuccess()
-            } else {
-                onError("Administrator access is required.")
-            }
-        } catch (e: Exception) {
-            onError("Error while creating a new product: ${e.message}")
+    override fun isCurrentUserAdmin(): Boolean = MzSupabase.currentEmail().equals(ADMIN_EMAIL, ignoreCase = true)
+
+    override suspend fun createNewProduct(product: Product, onSuccess: () -> Unit, onError: (String) -> Unit) =
+        adminWrite(onSuccess, onError, "Error while creating a new product") {
+            product.inventoryValidationError()?.let { error(it) }
+            db.from("products").insert(product.toRow())
         }
-    }
-
 
     @OptIn(ExperimentalUuidApi::class)
-    override suspend fun uploadImageToStorage(file: File): String? {
-        if (getCurrentUserId() == null || !isCurrentUserAdmin()) {
-            throw IllegalStateException("Administrator access is required.")
-        }
-
-        val storage = Firebase.storage.reference
-        val imagePath = storage.child(path = "images/${Uuid.random().toHexString()}")
+    override suspend fun uploadImageToStorage(file: UploadFile): String? {
+        check(getCurrentUserId() != null && isCurrentUserAdmin()) { "Administrator access is required." }
         return try {
-            withTimeout(timeMillis = 20000L) {
-                imagePath.putFile(file)
-                imagePath.getDownloadUrl()
+            withTimeout(timeMillis = 30_000L) {
+                val bytes = file.read()
+                val (type, ext) = imageContentType(bytes)
+                val path = "${Uuid.random().toHexString()}.$ext"
+                images.upload(path, bytes) { contentType = ContentType.parse(type) }
+                images.publicUrl(path)
             }
-        } catch (error: Exception) {
-            val details = error.causeMessages().lowercase()
-            val message = when {
-                "billing account" in details || "httpresult: 402" in details ->
-                    "Image uploads are unavailable because Firebase billing is closed. " +
-                            "Reopen or attach an active Google Cloud billing account, then try again."
-                "permission" in details || "unauthorized" in details ->
-                    "Firebase Storage denied this upload. Check the Storage security rules."
-                "timeout" in details ->
-                    "The image upload timed out. Check your connection and try a smaller image."
-                else -> "Image upload failed: ${error.message ?: "Unknown Firebase Storage error."}"
+        } catch (e: CancellationException) {
+            if (e is kotlinx.coroutines.TimeoutCancellationException) {
+                throw IllegalStateException("The image upload timed out. Check your connection and try a smaller image.", e)
             }
-            throw IllegalStateException(message, error)
+            throw e
+        } catch (e: Exception) {
+            throw IllegalStateException("Image upload failed: ${e.readableMessage("unknown storage error")}", e)
         }
     }
 
-    private fun Throwable.causeMessages(): String {
-        val messages = mutableListOf<String>()
-        var current: Throwable? = this
-        while (current != null) {
-            current.message?.let(messages::add)
-            current = current.cause
-        }
-        return messages.joinToString(" ")
-    }
-
-    override suspend fun deleteImageFromStorage(
-        downloadUrl: String,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit,
-    ) {
+    override suspend fun deleteImageFromStorage(downloadUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) {
         try {
-            if (!isCurrentUserAdmin()) {
-                onError("Administrator access is required.")
-                return
-            }
-            val storagePath = extractFirebaseStoragePath(downloadUrl)
-            if (storagePath != null) {
-                Firebase.storage.reference(storagePath).delete()
-                onSuccess()
-            } else {
-                onError("Storage Path is null.")
-            }
+            if (!isCurrentUserAdmin()) return onError("Administrator access is required.")
+            // Only images stored in this project's bucket can be removed; old Firebase URLs are left alone.
+            if (!downloadUrl.startsWith(publicImagePrefix)) return onSuccess()
+            val path = downloadUrl.removePrefix(publicImagePrefix).substringBefore('?')
+            images.delete(path)
+            onSuccess()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            onError("Error while deleting a thumbnail: $e")
+            onError("Error while deleting a thumbnail: ${e.readableMessage("storage error")}")
         }
     }
 
-
-
-    override fun readLastTenProducts(): Flow<RequestState<List<Product>>> = channelFlow {
-        try {
-            val userId = getCurrentUserId()
-            if (userId != null && isCurrentUserAdmin()) {
-                val database = Firebase.firestore
-                database.collection(collectionPath = "product")
-                    .orderBy("createdAt", Direction.DESCENDING)
-                    .limit(500)
-                    .snapshots
-                    .collectLatest { query ->
-                        val products = query.documents.map { document ->
-                            document.toProduct()
-                        }
-                        send(RequestState.Success(data = products.map { it.copy(title = it.title.uppercase()) }))
-                    }
-            } else {
-                send(RequestState.Error("User is not available."))
-            }
-        } catch (e: Exception) {
-            send(RequestState.Error("Error while reading the last 10 items from the database: ${e.message}"))
-        }
+    override fun readLastTenProducts(): Flow<RequestState<List<Product>>> = pollingFlow(errorPrefix = "Error while reading products") {
+        if (getCurrentUserId() == null || !isCurrentUserAdmin()) return@pollingFlow RequestState.Error("User is not available.")
+        val rows = db.from("products").select {
+            order("created_at", Order.DESCENDING)
+            limit(500)
+        }.decodeList<ProductRow>()
+        RequestState.Success(rows.map { it.toProduct().let { p -> p.copy(title = p.title.uppercase()) } })
     }
 
-    override suspend fun readProductById(id: String): RequestState<Product> {
-        return try {
-            val userId = getCurrentUserId()
-            if (userId != null && isCurrentUserAdmin()) {
-                val database = Firebase.firestore
-                val productDocument = database.collection(collectionPath = "product")
-                    .document(id)
-                    .get()
-                if (productDocument.exists) {
-                    val product = productDocument.toProduct()
-                    RequestState.Success(product.copy(title = product.title.uppercase()))
-                } else {
-                    RequestState.Error("Selected product not found.")
-                }
-            } else {
-                RequestState.Error("User is not available.")
-            }
-        } catch (e: Exception) {
-            RequestState.Error("Error while reading a selected product: ${e.message}")
-        }
+    override suspend fun readProductById(id: String): RequestState<Product> = try {
+        if (getCurrentUserId() == null || !isCurrentUserAdmin()) RequestState.Error("User is not available.")
+        else db.from("products").select { filter { eq("id", id) } }.decodeSingleOrNull<ProductRow>()
+            ?.let { row -> RequestState.Success(row.toProduct().let { it.copy(title = it.title.uppercase()) }) }
+            ?: RequestState.Error("Selected product not found.")
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        RequestState.Error("Error while reading a selected product: ${e.readableMessage("network error")}")
     }
 
-    private fun extractFirebaseStoragePath(downloadUrl: String): String? {
-        val startIndex = downloadUrl.indexOf("/o/") + 3
-        if (startIndex < 3) return null
-
-        val endIndex = downloadUrl.indexOf("?", startIndex)
-        val encodedPath = if (endIndex != -1) {
-            downloadUrl.substring(startIndex, endIndex)
-        } else {
-            downloadUrl.substring(startIndex)
+    override suspend fun updateProductThumbnail(productId: String, downloadUrl: String, onSuccess: () -> Unit, onError: (String) -> Unit) =
+        adminWrite(onSuccess, onError, "Error while updating a thumbnail image") {
+            val updated = db.from("products").update(buildJsonObject { put("thumbnail", downloadUrl) }) {
+                filter { eq("id", productId) }
+                select()
+            }.decodeList<ProductRow>()
+            check(updated.isNotEmpty()) { "Selected Product not found." }
         }
 
-        return decodeFirebasePath(encodedPath)
-    }
-
-    private fun decodeFirebasePath(encodedPath: String): String {
-        return encodedPath
-            .replace("%2F", "/")
-            .replace("%20", " ")
-    }
-
-    override suspend fun updateProductThumbnail(
-        productId: String,
-        downloadUrl: String,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit,
-    ) {
-        try {
-            val userId = getCurrentUserId()
-            if (userId != null && isCurrentUserAdmin()) {
-                val database = Firebase.firestore
-                val productCollection = database.collection(collectionPath = "product")
-                val existingProduct = productCollection
-                    .document(productId)
-                    .get()
-                if (existingProduct.exists) {
-                    productCollection.document(productId)
-                        .update("thumbnail" to downloadUrl)
-                    onSuccess()
-                } else {
-                    onError("Selected Product not found.")
-                }
-            } else {
-                onError("Administrator access is required.")
-            }
-        } catch (e: Exception) {
-            onError("Error while updating a thumbnail image: ${e.message}")
+    override suspend fun updateProduct(product: Product, onSuccess: () -> Unit, onError: (String) -> Unit) =
+        adminWrite(onSuccess, onError, "Error while updating the product") {
+            product.inventoryValidationError()?.let { error(it) }
+            val updated = db.from("products").update(product.toRow()) {
+                filter { eq("id", product.id) }
+                select()
+            }.decodeList<ProductRow>()
+            check(updated.isNotEmpty()) { "Selected Product not found." }
         }
-    }
 
-    override suspend fun updateProduct(
-        product: Product,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit,
-    ) {
-        try {
-            product.inventoryValidationError()?.let { onError(it); return }
-            val userId = getCurrentUserId()
-            if (userId != null && isCurrentUserAdmin()) {
-                val database = Firebase.firestore
-                val productCollection = database.collection(collectionPath = "product")
-                val existingProduct = productCollection
-                    .document(product.id)
-                    .get()
-                if (existingProduct.exists) {
-                    productCollection.document(product.id)
-                        .update(product.copy(title = product.title.lowercase())) { encodeDefaults = true }
-                    onSuccess()
-                } else {
-                    onError("Selected Product not found.")
-                }
-            } else {
-                onError("Administrator access is required.")
-            }
-        } catch (e: Exception) {
-            onError("Error while updating a thumbnail image: ${e.message}")
+    override suspend fun deleteProduct(productId: String, onSuccess: () -> Unit, onError: (String) -> Unit) =
+        adminWrite(onSuccess, onError, "Error while deleting the product") {
+            val deleted = db.from("products").delete {
+                filter { eq("id", productId) }
+                select()
+            }.decodeList<ProductRow>()
+            check(deleted.isNotEmpty()) { "Selected Product not found." }
         }
-    }
-
-    override suspend fun deleteProduct(
-        productId: String,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit,
-    ) {
-        try {
-            val userId = getCurrentUserId()
-            if (userId != null && isCurrentUserAdmin()) {
-                val database = Firebase.firestore
-                val productCollection = database.collection(collectionPath = "product")
-                val existingProduct = productCollection
-                    .document(productId)
-                    .get()
-                if (existingProduct.exists) {
-                    productCollection.document(productId)
-                        .delete()
-                    onSuccess()
-                } else {
-                    onError("Selected Product not found.")
-                }
-            } else {
-                onError("Administrator access is required.")
-            }
-        } catch (e: Exception) {
-            onError("Error while updating a thumbnail image: ${e.message}")
-        }
-    }
 
     override fun searchProductsByTitle(searchQuery: String): Flow<RequestState<List<Product>>> =
-        channelFlow {
-            try {
-                val userId = getCurrentUserId()
-                if (userId != null && isCurrentUserAdmin()) {
-                    val database = Firebase.firestore
-
-//                    val queryText = searchQuery.trim().lowercase()
-//                    val endText = queryText + "\uf8ff"
-
-                    database.collection(collectionPath = "product")
-//                        .orderBy("title")
-//                        .startAt(queryText)
-//                        .endAt(endText)
-                        .snapshots
-                        .collectLatest { query ->
-                            val products = query.documents.map { document ->
-                                document.toProduct()
-                            }
-                            send(
-                                RequestState.Success(
-                                    products
-                                        .filter { it.title.contains(searchQuery.trim(), ignoreCase = true) }
-                                        .map { it.copy(title = it.title.uppercase()) }
-                                )
-                            )
-                        }
-                } else {
-                    send(RequestState.Error("User is not available."))
-                }
-            } catch (e: Exception) {
-                send(RequestState.Error("Error while searching products: ${e.message}"))
-            }
+        pollingFlow(errorPrefix = "Error while searching products") {
+            if (getCurrentUserId() == null || !isCurrentUserAdmin()) return@pollingFlow RequestState.Error("User is not available.")
+            val query = searchQuery.trim().lowercase().replace("%", "").replace("_", "")
+            val rows = db.from("products").select {
+                if (query.isNotEmpty()) filter { ilike("title", "%$query%") }
+                order("created_at", Order.DESCENDING)
+                limit(500)
+            }.decodeList<ProductRow>()
+            RequestState.Success(rows.map { it.toProduct().let { p -> p.copy(title = p.title.uppercase()) } })
         }
 
+    private suspend fun adminWrite(onSuccess: () -> Unit, onError: (String) -> Unit, errorPrefix: String, block: suspend () -> Unit) {
+        try {
+            if (getCurrentUserId() == null || !isCurrentUserAdmin()) return onError("Administrator access is required.")
+            block()
+            DataRefresh.poke()
+            onSuccess()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: IllegalStateException) {
+            onError(e.message ?: errorPrefix)
+        } catch (e: Exception) {
+            onError("$errorPrefix: ${e.readableMessage("network error")}")
+        }
+    }
 }
